@@ -1,0 +1,25 @@
+# Tiny CPU config for development with random tensors (see CLAUDE.md "Build order").
+device: cpu
+seed: 0
+
+# Environment stand-ins for random-tensor tests.
+obs_dim: 5
+act_dim: 2
+
+model:
+  hidden: 64          # d: MLP units
+  deter: 512          # 8d, GRU state size
+  blocks: 8           # block-diagonal GRU blocks
+  stoch: 4            # K: number of categorical latents
+  classes: 8          # C: classes per latent
+  unimix: 0.01
+  mlp_layers: 3
+  cnn_depth: 4
+  kernel: 5
+  cnn_mults: [2, 3, 4, 4]
+  bins: 255
+
+train:
+  batch_size: 2       # B
+  seq_len: 8          # T
+  horizon: 5          # H
