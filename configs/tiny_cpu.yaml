@@ -7,13 +7,15 @@ obs_dim: 5
 act_dim: 2
 
 model:
-  hidden: 64          # d: MLP units
-  deter: 512          # 8d, GRU state size
-  blocks: 8           # block-diagonal GRU blocks
-  stoch: 4            # K: number of categorical latents
-  classes: 8          # C: classes per latent
+  mlp_units: 64       # d: MLP width
+  recurrent_dim: 512  # 8d, size of h_t
+  gru_blocks: 8       # block-diagonal GRU blocks
+  K: 4                # number of categorical latents
+  C: 8                # classes per latent
   unimix: 0.01
-  mlp_layers: 3
+  mlp_layers: 3       # encoder, decoder, actor, critic
+  prior_layers: 2     # official imglayers
+  post_layers: 1      # official obslayers
   cnn_depth: 4
   kernel: 5
   cnn_mults: [2, 3, 4, 4]
