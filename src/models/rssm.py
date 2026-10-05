@@ -9,7 +9,7 @@ Symbols (tiny_cpu values in brackets):
 State (suggested layout, change freely):
     h:      (..., D)      deterministic GRU state
     z:      (..., K * C)  flattened one-hot sample (straight-through)
-    logits: (..., K, C)   logits of the distribution z was sampled from
+    probs:  (..., K, C)   unimixed probabilities z was sampled from
 
 Index convention (CLAUDE.md): replay record t holds (x_t, a_t, r_t, c_t), and
 h_t = f(h_{t-1}, z_{t-1}, a_{t-1}). So the action that feeds step t is the
@@ -81,9 +81,13 @@ class RSSM(nn.Module):
     def initial_state(self, batch_size: int, device: torch.device) -> dict:
         """State used at t = 0 and wherever is_first is set.
 
-        Returns: h (B, D), z (B, K*C), logits (B, K, C).
+        Returns: h (B, D), z (B, K*C), probs (B, K, C).
         """
-        raise NotImplementedError
+        h_0 = torch.zeros(batch_size, self.recurrent_dim, device=device)
+        z_0 = torch.zeros(batch_size, self.K*self.C, device=device)
+        probs = torch.ones(batch_size, self.K, self.C, device=device)/self.C
+
+        return {"h":h_0, "z": z_0, "probs": probs}
 
     def _gru_step(self, h: torch.Tensor, z: torch.Tensor,
                   a: torch.Tensor) -> torch.Tensor:
@@ -130,9 +134,17 @@ class RSSM(nn.Module):
 
         prev_state: h (B, D), z (B, K*C)
         prev_action: (B, A)
-        Returns the prior state at t: h (B, D), z (B, K*C), logits (B, K, C).
+        Returns the prior state at t: h (B, D), z (B, K*C), probs (B, K, C).
         """
-        raise NotImplementedError
+        h_tminus1 = prev_state["h"]
+        z_tminus1 = prev_state["z"]
+        h_t = self._gru_step(h_tminus1, z_tminus1, prev_action)
+        logits = self.prior(h_t)
+        z_t, probs = sample_categorical(logits, self.K, self.C, self.unimix)
+
+        return {"h": h_t, "z": z_t, "probs": probs}
+
+
 
     def obs_step(self, prev_state: dict, prev_action: torch.Tensor,
                  embed: torch.Tensor, is_first: torch.Tensor) -> tuple[dict, dict]:
@@ -142,9 +154,20 @@ class RSSM(nn.Module):
         prev_action: (B, A)
         embed: (B, E)
         is_first: (B,) bool
-        Returns (post, prior), each h (B, D), z (B, K*C), logits (B, K, C).
+        Returns (post, prior), each h (B, D), z (B, K*C), probs (B, K, C).
         """
-        raise NotImplementedError
+
+        keep = 1.0 - is_first.float()
+        keep = keep.unsqueeze(-1)
+        prev_state = {"h": prev_state["h"]*keep, "z": prev_state["z"]*keep, "probs":prev_state["probs"]}
+        prev_action = prev_action * keep
+        prior_state = self.img_step(prev_state, prev_action)
+        h_t = prior_state["h"]
+        logits = self.posterior(torch.cat([h_t, embed], dim=-1))
+        z_t, probs = sample_categorical(logits, self.K, self.C, self.unimix)
+        return {"h": h_t, "z": z_t, "probs": probs}, prior_state
+
+
 
     def observe(self, embed: torch.Tensor, action: torch.Tensor,
                 is_first: torch.Tensor, state: dict | None = None) -> tuple[dict, dict]:
@@ -152,7 +175,7 @@ class RSSM(nn.Module):
 
         embed: (B, T, E), action: (B, T, A), is_first: (B, T) bool
         state: carried-over state from the previous chunk, or None
-        Returns (posts, priors), each h (B, T, D), z (B, T, K*C), logits (B, T, K, C).
+        Returns (posts, priors), each h (B, T, D), z (B, T, K*C), probs (B, T, K, C).
         """
         raise NotImplementedError
 
