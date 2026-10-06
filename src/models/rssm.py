@@ -177,7 +177,45 @@ class RSSM(nn.Module):
         state: carried-over state from the previous chunk, or None
         Returns (posts, priors), each h (B, T, D), z (B, T, K*C), probs (B, T, K, C).
         """
-        raise NotImplementedError
+        B, T, _ = embed.shape
+        A = action.shape[-1]
+        
+        posts = []
+        priors = []
+
+        if state is None:
+            prev_state = self.initial_state(B, embed.device)
+        else:
+            prev_state = state
+
+        prev_action = torch.zeros_like(action[:, 0])
+
+        
+        for step in range(T):
+            embed_step = embed[:, step, :]
+            action_step = action[:, step, :]
+            is_first_step = is_first[:, step]
+            post, prior = self.obs_step(prev_state, prev_action, embed_step, is_first_step)
+            posts.append(post)
+            priors.append(prior)
+            prev_action = action_step
+            prev_state = post
+
+        
+        posts_stacked = {}
+        for k in posts[0]:                         # k = "h", then "z", then "probs"
+            per_step = [s[k] for s in posts]       # e.g. [h_0, h_1, h_2], each (B, 512)
+            posts_stacked[k] = torch.stack(per_step, dim=1)   # (B, T, 512)
+
+        priors_stacked = {}
+        for k in priors[0]:                         # k = "h", then "z", then "probs"
+            per_step = [s[k] for s in priors]       # e.g. [h_0, h_1, h_2], each (B, 512)
+            priors_stacked[k] = torch.stack(per_step, dim=1)   # (B, T, 512)
+
+        return posts_stacked, priors_stacked         
+
+
+
 
     def imagine(self, start: dict, policy, horizon: int) -> tuple[dict, torch.Tensor]:
         """Roll the prior forward H steps with actions from the policy.
@@ -187,8 +225,34 @@ class RSSM(nn.Module):
         Returns states h (N, H+1, D), z (N, H+1, K*C) (index 0 = start)
         and actions (N, H+1, A).
         """
-        raise NotImplementedError
+        with torch.no_grad():
+        
+            states = [start]
+            start_features = self.get_feat(start)
+            start_action = policy(start_features)
+            actions = [start_action]
+            states_stacked = {}
+
+            curr_state = start
+            curr_action = start_action
+            for _ in range(horizon):
+                state = self.img_step(curr_state, curr_action)
+                curr_action = policy(self.get_feat(state))
+                states.append(state)
+                actions.append(curr_action)
+                curr_state = state
+        
+
+            for k in ["h", "z"]:
+                per_step = [s[k] for s in states]       # e.g. [h_0, h_1, h_2], each (N, 512)
+                states_stacked[k] = torch.stack(per_step, dim=1)   # (N, H+1, 512)
+            
+            actions_stacked = torch.stack(actions, dim=1)
+
+            return states_stacked, actions_stacked
+
 
     def get_feat(self, state: dict) -> torch.Tensor:
         """Concatenate [h, z] -> (..., D + K*C), the input to heads, actor and critic."""
-        raise NotImplementedError
+        features = torch.cat((state["h"], state["z"]), dim=-1)
+        return features
