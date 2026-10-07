@@ -149,7 +149,7 @@ docs/         study-notes.md, equation-map.md, debugging.md, essay.md
 ```
 
 - Write device-agnostic code: pass `device` around, and never call `.cuda()` directly.
-- Build both encoder paths (MLP for vectors, CNN for images) from the start.
+- Build the MLP encoder/decoder path (vectors) first; add the CNN path (images) before the vision task.
 
 ## Build order and tests
 

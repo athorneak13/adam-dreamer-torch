@@ -3,6 +3,7 @@
 import torch
 from torch import nn
 import math
+from src.models.distributions import symlog, symexp
 
 
 class RMSNorm(nn.Module):
@@ -70,3 +71,37 @@ class BlockLinear(nn.Module):
         y = torch.einsum('...gi,gio->...go', x, self.w) + self.b
         
         return y
+
+class VectorEncoder(nn.Module):
+    def __init__(self, obs_dim: int, units: int, layers: int):
+        """symlog (a function, no layer) + MLP(obs_dim, units, layers).
+
+        Output size is self.out_dim (= units); pass it as the RSSM's embed_dim.
+        """
+        super().__init__()
+
+        self.out_dim = units
+        self.net = MLP(obs_dim, self.out_dim, layers)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        """obs: (..., obs_dim) raw -> e: (..., out_dim)."""
+        x = symlog(obs)
+        return self.net(x)
+
+
+class VectorDecoder(nn.Module):
+    def __init__(self, feat_dim: int, units: int, layers: int, obs_dim: int):
+        """MLP trunk + Linear(units, obs_dim) output layer."""
+        super().__init__()
+
+        self.net = nn.Sequential(
+                    MLP(feat_dim, units, layers),
+                    nn.Linear(units, obs_dim)
+        )
+
+    def forward(self, feat: torch.Tensor) -> torch.Tensor:
+        """feat: (..., F) -> predicted symlog(obs): (..., obs_dim).
+
+        Compare with symlog(obs) by MSE; do not symexp before the loss.
+        """
+        return self.net(feat)
