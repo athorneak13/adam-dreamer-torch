@@ -141,7 +141,7 @@ Values come from the paper and the official config at commit e3f0224.
 
 ```
 configs/      tiny_cpu.yaml, dmc_walker_walk.yaml, ablation_horizon.yaml
-src/models/   networks.py (MLP/CNN, encoder, decoder), rssm.py, heads.py, distributions.py
+src/models/   networks.py (MLP/CNN, encoder, decoder), rssm.py, heads.py, distributions.py, world_model.py
 src/          returns.py, losses.py, optim.py (LaProp + AGC), replay.py, agent.py, train.py
 src/envs/     DMC wrapper (from the NM512 scaffold), E parallel envs
 tests/        test_distributions.py, test_returns.py, test_losses.py, test_rssm.py

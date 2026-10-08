@@ -16,6 +16,7 @@ model:
   mlp_layers: 3       # encoder, decoder, actor, critic
   prior_layers: 2     # official imglayers
   post_layers: 1      # official obslayers
+  head_layers: 1      # reward and continue heads (official rewhead/conhead layers)
   cnn_depth: 4
   kernel: 5
   cnn_mults: [2, 3, 4, 4]
