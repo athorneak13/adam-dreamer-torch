@@ -168,3 +168,73 @@ def test_world_model_overfits_one_batch(wm_batch):
     assert m["rec"] < 0.1 * first["rec"]
     assert m["rew"] < 0.2 * first["rew"]
     assert m["con"] < 0.05
+
+
+# ---------- actor-critic ----------
+
+from src.losses import actor_loss, continue_weights, critic_loss  # noqa: E402
+
+
+def test_continue_weights_example():
+    # Study notes: c = (1.0, 0.95, 0.2) -> w = (1, 1.0, 0.95, ...); first H entries returned
+    c = torch.tensor([[1.0, 0.95, 0.2], [0.9, 0.9, 0.9]], requires_grad=True)
+    w = continue_weights(c)
+    assert torch.allclose(w, torch.tensor([[1.0, 1.0, 0.95], [1.0, 0.9, 0.81]]))
+    assert not w.requires_grad
+
+
+def test_critic_loss_uniform_and_zero_weight(bins):
+    N, L = 4, 5
+    logits = torch.zeros(N, L, 255)
+    zeros = torch.zeros(N, L)
+    loss = critic_loss(logits, zeros, zeros, torch.ones(N, L), bins)
+    assert abs(loss.item() - 2 * math.log(255)) < 1e-4
+    assert critic_loss(logits, torch.randn(N, L), torch.randn(N, L), zeros, bins).item() == 0.0
+
+
+def test_critic_loss_formula_and_gradients(bins):
+    N, L = 4, 5
+    logits = torch.randn(N, L, 255, requires_grad=True)
+    target = torch.randn(N, L, requires_grad=True) * 5
+    slow = torch.randn(N, L, requires_grad=True) * 5
+    weight = torch.rand(N, L, requires_grad=True)
+    loss = critic_loss(logits, target, slow, weight, bins, slow_reg=0.5)
+    ref = (weight * (reward_loss(logits, target, bins) + 0.5 * reward_loss(logits, slow, bins))).mean()
+    assert torch.allclose(loss, ref)
+
+    leaf_t = torch.randn(N, L, requires_grad=True)
+    leaf_s = torch.randn(N, L, requires_grad=True)
+    leaf_w = torch.rand(N, L, requires_grad=True)
+    critic_loss(logits, leaf_t, leaf_s, leaf_w, bins).backward()
+    assert logits.grad is not None
+    assert leaf_t.grad is None and leaf_s.grad is None and leaf_w.grad is None
+
+
+def test_actor_loss_continuous_example():
+    # CLAUDE.md: mu = 0, sigma = 0.5, a = 0.3, A = 0.16 -> dL/dmu = -0.192, dL/dsigma = +0.205
+    mu = torch.zeros(1, 1, 1, requires_grad=True)
+    sigma = torch.full((1, 1, 1), 0.5, requires_grad=True)
+    loss = actor_loss(torch.distributions.Normal(mu, sigma), torch.full((1, 1, 1), 0.3),
+                      torch.full((1, 1), 0.16), torch.ones(1, 1), entropy_coef=0.0)
+    loss.backward()
+    assert abs(mu.grad.item() - (-0.192)) < 1e-4
+    assert abs(sigma.grad.item() - 0.2048) < 1e-4
+
+
+def test_actor_loss_entropy_pushes_std_up():
+    sigma = torch.full((1, 1, 1), 0.5, requires_grad=True)
+    loss = actor_loss(torch.distributions.Normal(torch.zeros(1, 1, 1), sigma),
+                      torch.zeros(1, 1, 1), torch.zeros(1, 1), torch.ones(1, 1), entropy_coef=3e-4)
+    loss.backward()
+    assert abs(sigma.grad.item() - (-3e-4 / 0.5)) < 1e-8   # dL/dsigma = -eta / sigma
+
+
+def test_actor_loss_zero_weight_and_stop_gradients():
+    mean = torch.zeros(4, 5, 2, requires_grad=True)
+    adv = torch.randn(4, 5, requires_grad=True)
+    w = torch.zeros(4, 5, requires_grad=True)
+    loss = actor_loss(torch.distributions.Normal(mean, torch.ones(4, 5, 2) * 0.5),
+                      torch.randn(4, 5, 2), adv, w)
+    assert loss.item() == 0.0
+    loss.backward()
+    assert adv.grad is None and w.grad is None
