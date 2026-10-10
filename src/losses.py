@@ -92,3 +92,52 @@ def world_model_loss(out: dict, obs: torch.Tensor, reward: torch.Tensor,
 
     return loss, metrics
     
+
+
+# ---------- actor-critic (imagination and replay) ----------
+
+def continue_weights(cont: torch.Tensor) -> torch.Tensor:
+    """Probability each imagined state is still alive: w_0 = 1, w_{t+1} = w_t * c_t.
+
+    cont: (N, H) predicted c_t for t = 0..H-1 (from the continue head at state t+1)
+    Returns (N, H): w_t for t = 0..H-1, i.e. [1, c_0, c_0*c_1, ...]. No gradient.
+    """
+    with torch.no_grad():
+        ones_col = torch.ones_like(cont[:, :1])
+        cont = torch.cat([ones_col, cont[:, :-1]], dim=1)
+        return torch.cumprod(cont, dim=1)
+        
+
+
+def critic_loss(logits: torch.Tensor, target: torch.Tensor, slow_value: torch.Tensor,
+                weight: torch.Tensor, bins: torch.Tensor, slow_reg: float = 1.0) -> torch.Tensor:
+    """Twohot cross-entropy toward the return, plus the slow-critic regularizer.
+
+    logits:     (N, L, num_bins) critic logits on the states that have a target
+    target:     (N, L) return (lambda-return in imagination, R^rep on replay)
+    slow_value: (N, L) slow critic's value on the same states
+    weight:     (N, L) continue weights w_t (imagination) or the boundary mask (replay)
+    per step:   weight * (CE(twohot(target)) + slow_reg * CE(twohot(slow_value)))
+    Targets and weights carry no gradient. Returns a scalar: mean over N*L.
+    """
+    loss = weight.detach() * (reward_loss(logits, target.detach(), bins) + slow_reg * reward_loss(logits, slow_value.detach(), bins))
+    loss = loss.mean()
+    return loss
+
+
+def actor_loss(dist: torch.distributions.Normal, action: torch.Tensor, advantage: torch.Tensor,
+               weight: torch.Tensor, entropy_coef: float = 3e-4) -> torch.Tensor:
+    """Reinforce with entropy bonus.
+
+    dist:      actor distribution on states 0..H-1, batch shape (N, H), event (A,)
+    action:    (N, H, A) the imagined actions taken in those states
+    advantage: (N, H) (R_t - v(s_t)) / max(1, S)
+    weight:    (N, H) continue weights w_t
+    per step:  -sg(w_t) * (sg(adv_t) * log pi(a_t | s_t) + entropy_coef * H[pi(.|s_t)])
+    log pi and entropy are summed over action dims. Returns a scalar: mean over N*H.
+    """
+    log_prob = dist.log_prob(action).sum(-1)
+    entropy = dist.entropy().sum(-1)
+    loss = -weight.detach() * ( advantage.detach() * log_prob + entropy_coef * entropy)
+    loss = loss.mean()
+    return loss
