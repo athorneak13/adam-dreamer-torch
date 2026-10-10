@@ -50,6 +50,8 @@ What Claude Code should do for these parts:
 - r_t and c_t are the reward and continue flag that result from taking a_t in s_t. Store them in the same replay record as a_t.
 - Bootstraps use v_{t+1}. The paper's Eq. 5 writes v_t because it stores rewards with the arriving state. The math is the same; do not mix the two.
 - Continue weights: w_0 = 1, w_{t+1} = w_t * c_t (stop-gradient).
+- Time limits are truncations, not terminations: store c = 1 (DMC: c = TimeStep.discount; Gymnasium: c = 1 - terminated). Every env in scope ends only by time limit.
+- World-model loss offset: the reward/continue head at step t+1 predicts r_t, c_t (`preds[:, 1:]` vs `targets[:, :-1]`); pairs with is_first[:, t+1] are masked out.
 
 ## Algorithm summary
 
@@ -182,7 +184,10 @@ Environment progression:
 
 ## Open decisions (ask Adam)
 
-- GRU input embedding: one Linear on the concatenation, or separate Linears per input; and normalization.
-- Loss reduction over time: sum (paper Eq. 2) or mean.
-- Episode starts: placeholder r_0 / c_0 and how is_first resets the state.
 - Warm-up: how much random data to collect before training starts.
+
+## Resolved decisions
+
+- GRU input embedding: separate Linear + RMSNorm + SiLU per input (h, z, a), as in the official code.
+- Loss reduction: sum over feature dims within a step, free bits per step, then mean over B*T (official code).
+- Episode starts: is_first zeroes h, z and the previous action (mask multiply); the action before t = 0 is zeros. No r_0 / c_0 placeholder is needed under the TD3 convention; the offset mask handles boundaries.
