@@ -188,6 +188,7 @@ Environment progression:
 
 ## Resolved decisions
 
+- DMC settings: paper (replay ratio 512, action repeat 2, 1M model). Pendulum learned reliably at an effective replay ratio of 256 (3 seeds); ratio 64 did not learn.
 - GRU input embedding: separate Linear + RMSNorm + SiLU per input (h, z, a), as in the official code.
 - Loss reduction: sum over feature dims within a step, free bits per step, then mean over B*T (official code).
 - Episode starts: is_first zeroes h, z and the previous action (mask multiply); the action before t = 0 is zeros. No r_0 / c_0 placeholder is needed under the TD3 convention; the offset mask handles boundaries.

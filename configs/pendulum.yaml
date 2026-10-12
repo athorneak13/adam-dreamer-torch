@@ -4,7 +4,7 @@ device: cpu
 seed: 0
 
 env:
-  name: Pendulum-v1
+  name: gym:Pendulum-v1
   num_envs: 4
   action_repeat: 1      # unused for Pendulum; kept so DMC configs only change values
 
