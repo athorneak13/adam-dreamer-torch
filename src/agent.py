@@ -16,6 +16,7 @@ from src.models.world_model import WorldModel
 from src.returns import ReturnScale, replay_return
 from src.losses import world_model_loss, continue_weights, critic_loss, actor_loss
 from src.returns import lambda_return
+from src.optim import LaProp
 
 
 class Actor(nn.Module):
@@ -105,9 +106,24 @@ class Agent(nn.Module):
         self.slow_critic = copy.deepcopy(self.critic).requires_grad_(False)
         self.return_scale = ReturnScale()
 
-        self.wm_opt = torch.optim.Adam(self.world_model.parameters(), lr=cfg.optim.lr)
-        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=cfg.optim.lr)
-        self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr = cfg.optim.lr)
+        # self.wm_opt = torch.optim.Adam(self.world_model.parameters(), lr=cfg.optim.lr)
+        # self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=cfg.optim.lr)
+        # self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr = cfg.optim.lr)
+
+        self.wm_opt = LaProp(self.world_model.parameters(), lr=cfg.optim.lr,
+                            betas=(cfg.optim.beta1, cfg.optim.beta2), eps=cfg.optim.eps,
+                            agc=cfg.optim.agc, pmin=cfg.optim.pmin, warmup=cfg.optim.warmup
+                            )
+
+        self.actor_opt = LaProp(self.actor.parameters(), lr=cfg.optim.lr,
+                            betas=(cfg.optim.beta1, cfg.optim.beta2), eps=cfg.optim.eps,
+                            agc=cfg.optim.agc, pmin=cfg.optim.pmin, warmup=cfg.optim.warmup
+                            )
+
+        self.critic_opt = LaProp(self.critic.parameters(), lr=cfg.optim.lr,
+                            betas=(cfg.optim.beta1, cfg.optim.beta2), eps=cfg.optim.eps,
+                            agc=cfg.optim.agc, pmin=cfg.optim.pmin, warmup=cfg.optim.warmup
+                            )
 
         self.scales = vars(cfg.loss_scales)
         self.cfg = cfg
@@ -218,7 +234,7 @@ class Agent(nn.Module):
                     (self.actor_opt, self.actor),
                     (self.critic_opt, self.critic)]:
             
-            torch.nn.utils.clip_grad_norm_(module.parameters(), max_norm=100.0)
+            #torch.nn.utils.clip_grad_norm_(module.parameters(), max_norm=100.0)
             opt.step()
 
         update_slow_critic(self.critic, self.slow_critic, self.cfg.critic.slow_rate)
