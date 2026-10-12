@@ -9,6 +9,7 @@ dependencies = [
     "pyyaml>=6.0",
     "gymnasium>=1.0",
     "dm-control>=1.0",
+    "wandb>=0.17",
 ]
 
 [dependency-groups]

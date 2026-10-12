@@ -10,3 +10,5 @@ logdir/
 .DS_Store
 returns*.csv
 logs/
+checkpoints/
+wandb/

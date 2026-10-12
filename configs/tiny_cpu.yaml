@@ -50,3 +50,12 @@ optim:                  # LaProp + AGC (official DreamerV3 settings)
   agc: 0.3
   pmin: 1.0e-3
   warmup: 1000          # linear LR ramp from 0 over the first 1000 updates
+
+logging:
+  wandb: false
+  project: adam-dreamer-torch
+  run_name: null        # null -> '<env>_seed<seed>' (set in train.py main)
+
+checkpoint:
+  dir: checkpoints      # latest.pt is overwritten every `every` env steps
+  every: 1024        # a multiple of num_envs, so the step counter lands on it
