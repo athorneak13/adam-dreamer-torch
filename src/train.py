@@ -107,10 +107,22 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/tiny_cpu.yaml")
     parser.add_argument("--seed", type=int, default=None, help="overrides the config's seed")
+    parser.add_argument("--resume", action="store_true",
+                        help="continue from <checkpoint.dir>/latest.pt if it exists")
+    parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=None,
+                        help="--wandb / --no-wandb overrides the config's logging.wandb")
     args = parser.parse_args()
     cfg = load_config(args.config)
     if args.seed is not None:
         cfg.seed = args.seed
+    if args.wandb is not None:
+        cfg.logging.wandb = args.wandb
+    if cfg.logging.run_name is None:
+        task = cfg.env.name.split(":")[-1]
+        cfg.logging.run_name = f"{task}_seed{cfg.seed}"
+    cfg.logging.run_id = cfg.logging.run_name          # same W&B run when resuming
+    cfg.checkpoint.dir = f"{cfg.checkpoint.dir}/{cfg.logging.run_name}"
+    cfg.checkpoint.resume = args.resume
     torch.manual_seed(cfg.seed)
     np.random.seed(cfg.seed)
     train(cfg)
