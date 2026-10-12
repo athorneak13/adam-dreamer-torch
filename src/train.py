@@ -16,6 +16,7 @@ from src.config import load_config
 from src.envs.gym_env import GymEnvs
 from src.agent import Agent
 from src.replay import ReplayBuffer
+from src.envs import make_envs
 
 
 
@@ -41,7 +42,7 @@ def train(cfg) -> None:
     Open decisions: warm-up length, train every N steps, store clipped or raw action.
     """
     device = torch.device(cfg.device)
-    envs = GymEnvs(cfg.env.name, cfg.env.num_envs, cfg.seed)
+    envs = make_envs(cfg)#GymEnvs(cfg.env.name, cfg.env.num_envs, cfg.seed)
     agent = Agent(cfg=cfg, obs_dim=envs.obs_dim, act_dim=envs.act_dim).to(device)
     buffer = ReplayBuffer(capacity_per_env=int(cfg.replay.capacity)//cfg.env.num_envs, 
                           num_envs=cfg.env.num_envs, 
@@ -58,6 +59,7 @@ def train(cfg) -> None:
 
     try:
         step = 0
+        updates_due = 0
         for it in range(cfg.run.total_steps // cfg.env.num_envs):
             step = it * cfg.env.num_envs
 
@@ -70,7 +72,8 @@ def train(cfg) -> None:
                                                is_first=to_torch(is_first, device))
 
                 action = action_t.cpu().numpy()
-
+                updates_due += cfg.env.num_envs
+                
             action = np.clip(action, -1.0, 1.0)
             out = envs.step(action)
             buffer.add(obs, action, out["reward"], out["cont"], is_first)
@@ -85,9 +88,10 @@ def train(cfg) -> None:
             prev_action = action
         
 
-            if step >= cfg.run.warmup_steps and step % cfg.run.train_every == 0:
+            while updates_due >= cfg.run.train_every:#if step >= cfg.run.warmup_steps and step % cfg.run.train_every == 0:
                 batch = buffer.sample(cfg.train.batch_size, cfg.train.seq_len)
                 metrics = agent.train_step(batch)
+                updates_due -= cfg.run.train_every
 
             # training metrics, every log_every steps (once training has started)
             if metrics is not None and step % cfg.run.log_every == 0:

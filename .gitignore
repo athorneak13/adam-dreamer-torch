@@ -9,3 +9,4 @@ logdir/
 *.pt
 .DS_Store
 returns*.csv
+logs/
