@@ -1,0 +1,57 @@
+# DMC walker-walk, proprio. Paper settings: replay ratio 512, action repeat 2, 1M model.
+# obs_dim (24) and act_dim (6) come from the env.
+device: cuda
+seed: 0
+
+env:
+  name: dmc:walker_walk
+  num_envs: 16          # paper: 16 envs for Control
+  action_repeat: 2      # paper DMC setting
+
+model:
+  mlp_units: 64
+  recurrent_dim: 512
+  gru_blocks: 8
+  K: 32
+  C: 4
+  unimix: 0.01
+  mlp_layers: 3
+  prior_layers: 2
+  post_layers: 1
+  head_layers: 1
+  cnn_depth: 4
+  kernel: 5
+  cnn_mults: [2, 3, 4, 4]
+  bins: 255
+
+train:
+  batch_size: 16
+  seq_len: 64
+  horizon: 15
+
+run:
+  total_steps: 500000   # agent steps summed over envs = 1M env frames with action repeat 2
+  warmup_steps: 5120    # random actions before training (320 per env)
+  train_every: 2        # one train_step per 2 agent steps: replay ratio B*T/2 = 512
+  log_every: 5120       # a multiple of num_envs, so the step counter lands on it
+
+replay:
+  capacity: 5000000
+
+actor:
+  min_std: 0.1
+  max_std: 1.0
+  outscale: 0.01
+  entropy_coef: 3.0e-4
+
+critic:
+  slow_rate: 0.02
+  slow_reg: 1.0
+  gamma: 0.997
+  lam: 0.95
+
+loss_scales: {rec: 1.0, rew: 1.0, con: 1.0, dyn: 1.0, rep: 0.1, policy: 1.0, value: 1.0, repval: 0.3}
+free_nats: 1.0
+
+optim:
+  lr: 4.0e-5
