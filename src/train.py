@@ -8,6 +8,7 @@ Replay records follow the TD3 convention:
 """
 
 import argparse
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -17,6 +18,8 @@ from src.envs.gym_env import GymEnvs
 from src.agent import Agent
 from src.replay import ReplayBuffer
 from src.envs import make_envs
+from src.checkpoint import latest_checkpoint, load_checkpoint, save_checkpoint
+from src.logger import Logger
 
 
 
@@ -50,20 +53,31 @@ def train(cfg) -> None:
                           act_dim=envs.act_dim, 
                           device=device)
 
+    # resume: restore networks, optimizers, S, RNG and the step counter (replay starts empty)
+    start_step = 0
+    ckpt_path = Path(cfg.checkpoint.dir) / "latest.pt"
+    if cfg.checkpoint.resume and latest_checkpoint(cfg.checkpoint.dir) is not None:
+        start_step = load_checkpoint(ckpt_path, agent, device)
+        print(f"resumed from {ckpt_path} at step {start_step}")
+    logger = Logger(cfg)
+
     obs, is_first = envs.reset()
     state = None
     prev_action = np.zeros((cfg.env.num_envs, envs.act_dim), dtype=np.float32)
 
     returns_log = []
+    returns_file = f"returns_seed{cfg.seed}.csv"
+    if start_step > 0 and Path(returns_file).exists():
+        returns_log = [tuple(r) for r in np.loadtxt(returns_file, delimiter=",", ndmin=2)]
     metrics = None
 
     try:
-        step = 0
+        step = start_step
         updates_due = 0
-        for it in range(cfg.run.total_steps // cfg.env.num_envs):
+        for it in range(start_step // cfg.env.num_envs, cfg.run.total_steps // cfg.env.num_envs):
             step = it * cfg.env.num_envs
 
-            if step < cfg.run.warmup_steps:
+            if step < cfg.run.warmup_steps and start_step == 0:   # random warm-up only on a fresh run
                 action = np.random.uniform(-1.0, 1.0, size=(cfg.env.num_envs, envs.act_dim)).astype(np.float32)
             else:
                 action_t, state = agent.policy(obs=to_torch(obs, device),
@@ -72,7 +86,9 @@ def train(cfg) -> None:
                                                is_first=to_torch(is_first, device))
 
                 action = action_t.cpu().numpy()
-                updates_due += cfg.env.num_envs
+                # train only once replay holds warmup_steps records (after a resume it starts empty)
+                if len(buffer) * cfg.env.num_envs >= cfg.run.warmup_steps:
+                    updates_due += cfg.env.num_envs
                 
             action = np.clip(action, -1.0, 1.0)
             out = envs.step(action)
@@ -81,8 +97,8 @@ def train(cfg) -> None:
 
             # episode returns, right after envs.step / buffer.add
             done = ~np.isnan(out["episode_return"])
-            for ret in out["episode_return"][done]:
-                print(f"step {step:>7d} | episode return {ret:8.1f}")
+            for ret, length in zip(out["episode_return"][done], out["episode_length"][done]):
+                logger.episode(step, float(ret), float(length))
                 returns_log.append((step, float(ret)))
 
             prev_action = action
@@ -95,13 +111,15 @@ def train(cfg) -> None:
 
             # training metrics, every log_every steps (once training has started)
             if metrics is not None and step % cfg.run.log_every == 0:
-                print(f"step {step:>7d} | rec {metrics['rec']:.3f}  rew {metrics['rew']:.3f}  "
-                    f"value {metrics['value']:.3f}  ret {metrics['ret']:.2f}  "
-                    f"entropy {metrics['entropy']:.2f}  scale {metrics['ret_scale']:.2f}")
+                logger.metrics(step, metrics)
+
+            # checkpoint: the saved step is the next one to run, so resuming repeats nothing
+            if step > 0 and step % cfg.checkpoint.every == 0:
+                save_checkpoint(ckpt_path, agent, step + cfg.env.num_envs)
     finally:
         # runs even on Ctrl-C, so the returns so far are always saved
-        np.savetxt(f"returns_seed{cfg.seed}.csv", np.array(returns_log), delimiter=",",
-                   header="step,return")
+        np.savetxt(returns_file, np.array(returns_log), delimiter=",", header="step,return")
+        logger.close()
 
 def main() -> None:
     parser = argparse.ArgumentParser()
