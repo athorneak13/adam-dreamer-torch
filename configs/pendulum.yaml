@@ -1,0 +1,57 @@
+# Pendulum-v1, first real run. Official 1M model size, paper batch sizes.
+# obs_dim and act_dim come from the env, not from this file.
+device: cpu
+seed: 0
+
+env:
+  name: Pendulum-v1
+  num_envs: 4
+  action_repeat: 1      # unused for Pendulum; kept so DMC configs only change values
+
+model:
+  mlp_units: 64         # d: MLP width
+  recurrent_dim: 512    # 8d, size of h_t
+  gru_blocks: 8
+  K: 32                 # number of categorical latents
+  C: 4                  # classes per latent (d / 16)
+  unimix: 0.01
+  mlp_layers: 3         # encoder, decoder, actor, critic
+  prior_layers: 2       # official imglayers
+  post_layers: 1        # official obslayers
+  head_layers: 1        # reward and continue heads
+  cnn_depth: 4
+  kernel: 5
+  cnn_mults: [2, 3, 4, 4]
+  bins: 255
+
+train:
+  batch_size: 16        # B
+  seq_len: 64           # T
+  horizon: 15           # H
+
+run:
+  total_steps: 30000   # env steps, summed over all envs
+  warmup_steps: 2000    # random actions before training (500 per env)
+  train_every: 2        # one train_step per 2 env steps: replay ratio B*T/2 = 512 (paper DMC)
+  log_every: 500       # env steps between log lines
+
+replay:
+  capacity: 5000000     # total records across all envs (official 5e6)
+
+actor:
+  min_std: 0.1
+  max_std: 1.0
+  outscale: 0.01
+  entropy_coef: 3.0e-4
+
+critic:
+  slow_rate: 0.02
+  slow_reg: 1.0
+  gamma: 0.997          # 1 - 1/333
+  lam: 0.95
+
+loss_scales: {rec: 1.0, rew: 1.0, con: 1.0, dyn: 1.0, rep: 0.1, policy: 1.0, value: 1.0, repval: 0.3}
+free_nats: 1.0
+
+optim:
+  lr: 4.0e-5
