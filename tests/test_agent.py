@@ -99,7 +99,7 @@ def test_agent_parameter_count(agent):
 def test_train_step_metrics_and_initial_values(cfg, agent):
     m = agent.train_step(make_batch(cfg))
     expected = {"rec", "rew", "con", "dyn", "rep", "value", "repval", "policy",
-                "ret", "adv_mag", "ret_scale", "entropy"}
+                "ret", "adv_mag", "ret_scale", "entropy", "act_oob"}
     assert expected <= set(m)
     assert all(isinstance(v, float) and math.isfinite(v) for v in m.values())
     assert m["ret"] == 0.0 and m["adv_mag"] == 0.0     # zero-initialized reward head and critic

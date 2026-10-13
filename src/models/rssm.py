@@ -103,6 +103,7 @@ class RSSM(nn.Module):
         """
         h_embed = self.h_embedding(h)
         z_embed = self.z_embedding(z)
+        a = a / torch.clamp(a.abs(), min=1.0).detach()
         a_embed = self.a_embedding(a)
 
         h_blocks = h.unflatten(-1, (self.G, self.block_size))   # (B, 512) → (B, 8, 64)

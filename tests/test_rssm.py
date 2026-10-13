@@ -148,3 +148,15 @@ def test_imagine_shapes(cfg, rssm, seq):
     assert torch.allclose(states["h"][:, 0], start["h"])
     # actions[t] is the action taken in states[t]
     assert torch.allclose(actions, torch.tanh(states["h"][..., :cfg.act_dim]))
+
+
+def test_actions_are_clipped_inside_the_dynamics(rssm):
+    """The world model treats an action of 1.4 like 1.0, as the environment does."""
+    torch.manual_seed(0)
+    h = torch.rand(3, rssm.recurrent_dim) * 2 - 1
+    z = torch.zeros(3, rssm.K * rssm.C)
+    inside = torch.tensor([[0.3, -0.8], [1.0, -1.0], [0.5, 0.2]])
+    outside = torch.tensor([[0.3, -0.8], [1.4, -2.5], [0.5, 0.2]])
+    before = outside.clone()
+    assert torch.allclose(rssm._gru_step(h, z, inside), rssm._gru_step(h, z, outside))
+    assert torch.equal(outside, before)          # the caller's tensor is not modified

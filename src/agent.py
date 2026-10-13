@@ -245,7 +245,9 @@ class Agent(nn.Module):
                         "ret": returns.mean().item(),
                         "adv_mag": advantage.abs().mean().item(),
                         "ret_scale": self.return_scale.scale(),
-                        "entropy": actor_dist.entropy().sum(-1).mean().item()}
+                        "entropy": actor_dist.entropy().sum(-1).mean().item(),
+                        # fraction of imagined actions outside [-1, 1] (clipped in the RSSM)
+                        "act_oob": (actions.abs() > 1).float().mean().item()}
 
         
         return metrics_dict
