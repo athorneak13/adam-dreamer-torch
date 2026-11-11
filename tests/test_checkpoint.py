@@ -76,3 +76,14 @@ def test_logger_offline_prints(cfg, capsys):
     logger.close()
     out = capsys.readouterr().out
     assert "episode return  -1234.5" in out and "rec 0.100" in out
+
+
+def test_config_overrides(cfg):
+    import pytest
+    from src.config import apply_overrides
+    apply_overrides(cfg, ["train.horizon=30", "seed=3", "actor.entropy_coef=1.0e-3"])
+    assert cfg.train.horizon == 30 and isinstance(cfg.train.horizon, int)
+    assert cfg.seed == 3
+    assert cfg.actor.entropy_coef == 1e-3
+    with pytest.raises(KeyError):
+        apply_overrides(cfg, ["train.horizn=5"])

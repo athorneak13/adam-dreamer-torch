@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from src.config import load_config
+from src.config import apply_overrides, load_config
 from src.envs.gym_env import GymEnvs
 from src.agent import Agent
 from src.replay import ReplayBuffer
@@ -66,7 +66,7 @@ def train(cfg) -> None:
     prev_action = np.zeros((cfg.env.num_envs, envs.act_dim), dtype=np.float32)
 
     returns_log = []
-    returns_file = f"returns_seed{cfg.seed}.csv"
+    returns_file = f"returns_{cfg.logging.run_name or f'seed{cfg.seed}'}.csv"
     if start_step > 0 and Path(returns_file).exists():
         returns_log = [tuple(r) for r in np.loadtxt(returns_file, delimiter=",", ndmin=2)]
     metrics = None
@@ -129,8 +129,15 @@ def main() -> None:
                         help="continue from <checkpoint.dir>/latest.pt if it exists")
     parser.add_argument("--wandb", action=argparse.BooleanOptionalAction, default=None,
                         help="--wandb / --no-wandb overrides the config's logging.wandb")
+    parser.add_argument("--run-name", default=None,
+                        help="names the W&B run, checkpoint folder and returns CSV")
+    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                        help="override a config value, e.g. --set train.horizon=5 (repeatable)")
     args = parser.parse_args()
     cfg = load_config(args.config)
+    apply_overrides(cfg, args.set)
+    if args.run_name is not None:
+        cfg.logging.run_name = args.run_name
     if args.seed is not None:
         cfg.seed = args.seed
     if args.wandb is not None:
