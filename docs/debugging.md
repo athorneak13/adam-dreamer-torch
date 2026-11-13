@@ -89,8 +89,8 @@ Every component has tests with numbers worked out by hand before the code existe
 **Imagined actions outside the range the world model was trained on.**
 - *Symptom:* on walker around step 80k, imagined returns kept rising (~335 per episode implied) while real returns fell to ~110.
 - *Diagnosis:* the actor samples a ~ Normal(tanh(·), σ) without squashing, and imagination fed those raw samples into the dynamics. The environment clips actions to [−1, 1], so the world model had only ever seen actions inside that range, and had to guess what 1.4 does. The actor can exploit those guesses. A diagnostic metric showed **30% of imagined actions** fell outside [−1, 1] at initialization.
-- *Fix:* clip the action inside the RSSM step, as the official code does (commit 4df6bb5). The actor's log-probability still uses the raw sample, so the Reinforce gradient stays unbiased.
-- *Outcome:* the mismatch was real and the fix matches the official code, but it was not the cause of the dip. The three original walker runs (commit 5889b17) ran without it, recovered on their own and finished at ~930–960; see the next entry. The H = 15 runs with the fix (horizon sweep, commit 4aa0e6c) learned at about the same rate as those without it.
+- *Fix:* clip the action inside the RSSM step, as the official code does (commit 701d669). The actor's log-probability still uses the raw sample, so the Reinforce gradient stays unbiased.
+- *Outcome:* the mismatch was real and the fix matches the official code, but it was not the cause of the dip. The three original walker runs (commit 2bb3faf) ran without it, recovered on their own and finished at ~930–960; see the next entry. The H = 15 runs with the fix (horizon sweep, commit 8d4db58) learned at about the same rate as those without it.
 - *Lesson:* this was in my notes from the start ("the official code divides the action by max(1, |a|)"), parked as a detail, and only revisited when the metrics forced it.
 
 **A false alarm: two seeds dipped at the same step.**

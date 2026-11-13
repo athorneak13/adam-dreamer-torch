@@ -25,7 +25,7 @@ All results are on walker-walk with proprioceptive observations. Curves show env
 | end of run | 500k | 1M | 942.2 | 952.3 | 960.2 | 951.6 ± 7.4 |
 | paper budget | 250k | 500k | 630.2 | 684.4 | 914.8 | 743.2 ± 123.4 |
 
-These runs used commit `5889b17` (`results/walker_walk_v1/run_info.txt`), which predates the action clipping inside the dynamics (`4df6bb5`; see [Differences](#differences-from-the-paper-and-the-official-code)).
+These runs used commit `2bb3faf` (`results/walker_walk_v1/run_info.txt`), which predates the action clipping inside the dynamics (`701d669`; see [Differences](#differences-from-the-paper-and-the-official-code)).
 
 **Published DreamerV3.** The paper's Proprio Control benchmark has a budget of 500K environment steps. The official repository publishes per-task score curves ([`scores/dmc_proprio-dreamerv3.json.gz`](https://github.com/danijar/dreamerv3/tree/main/scores)): for walker-walk, 5 seeds, logged every 10K steps up to 490K. Averaging each seed's last 3 logged points (470K–490K):
 
@@ -49,7 +49,7 @@ H ∈ {5, 15, 30}, 3 seeds each, **300k agent steps per run (600k env frames)**,
 | H = 15 | 659.5 | 822.9 | 903.2 | 795.2 ± 101.4 |
 | H = 30 | 945.9 | 908.4 | 935.8 | 930.1 ± 15.8 |
 
-All 9 runs reached 300k agent steps. The H = 15 row is not directly comparable to the 3-seed table above: it trained for 600k frames instead of 1M, and with a later version of the code (commit `4aa0e6c`, which includes the action clipping).
+All 9 runs reached 300k agent steps. The H = 15 row is not directly comparable to the 3-seed table above: it trained for 600k frames instead of 1M, and with a later version of the code (commit `8d4db58`, which includes the action clipping).
 
 Longer horizons learned faster and more reliably. Every H = 30 seed passed a batch-mean return of 800 by 208k agent steps (at 152k, 192k and 208k). Two H = 15 seeds passed it later (216k, 288k) and the third had not by 300k. No H = 5 seed passed it; their best batch mean was 687. The critic bootstraps beyond the horizon in every case ($R_H = v_H$), so the shorter horizons still see a value estimate of what follows. But at H = 5 the actor's return is built from only 10 simulator steps, about 0.25 s, which is too short to show where a stride leads. Up to H = 30, longer rollouts showed no cost from compounding model error.
 

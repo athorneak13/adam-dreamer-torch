@@ -1,4 +1,4 @@
-5889b17 Wire logger, periodic checkpoints and --resume into the training loop
+2bb3faf Wire logger, periodic checkpoints and --resume into the training loop
 On branch main
 Your branch is up to date with 'origin/main'.
 
@@ -7,3 +7,6 @@ Untracked files:
 	run_info.txt
 
 nothing added to commit but untracked files present (use "git add" to track)
+
+# Recorded as 5889b17 at run time. The hash changed when the git history was
+# rewritten to drop private notes; W&B run metadata shows the original hash.
