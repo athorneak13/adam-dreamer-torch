@@ -41,7 +41,7 @@ $$
 | $p_\phi(\hat z_t \mid h_t)$ | `RSSM.prior` + `sample_categorical`, in `RSSM.img_step` | Prior and posterior share the same $h_t$. Layer counts (`prior_layers`, `post_layers`) follow the official config (`imglayers: 2`, `obslayers: 1`); the paper doesn't give them |
 | reward | `heads.RewardHead` on `get_feat` | Twohot, 255 bins, zero-initialized output (Eqs. 10–12). The head on $s_{t+1}$ predicts $r_t$, because $s_{t+1}$ is the first state built from $a_t$ |
 | continue | `heads.ContinueHead` on `get_feat` | One logit, binary cross-entropy. Same $s_{t+1} \to c_t$ offset |
-| decoder | `networks.VectorDecoder` on `get_feat` | Predicts $\operatorname{symlog}(x_t)$, trained with MSE (Eq. 8). Vector observations only |
+| decoder | `networks.VectorDecoder` on `get_feat` | Predicts $\mathrm{symlog}(x_t)$, trained with MSE (Eq. 8). Vector observations only |
 
 ### Sequence model $f_\phi$: the block GRU
 
@@ -93,8 +93,8 @@ It normalizes each sample's vector to RMS ≈ 1 (per sample, not per batch), the
 `sample_categorical` turns logits $(\dots, K C)$ into:
 
 $$
-\tilde p = 0.99 \cdot \operatorname{softmax}(\ell) + 0.01 \cdot \tfrac{1}{C}, \qquad
-z = \operatorname{onehot}(\text{sample} \sim \tilde p) + \tilde p - \operatorname{sg}(\tilde p)
+\tilde p = 0.99 \cdot \mathrm{softmax}(\ell) + 0.01 \cdot \tfrac{1}{C}, \qquad
+z = \mathrm{onehot}(\text{sample} \sim \tilde p) + \tilde p - \mathrm{sg}(\tilde p)
 $$
 
 $K$ independent categoricals with $C$ classes each, flattened to $K C$. The forward pass is the one-hot sample; the backward pass uses the gradient of $\tilde p$ (straight-through). The 1% uniform mix (paper: "unimix") keeps every probability above zero, so the KL losses stay finite. The unimixed $\tilde p$ is what the KL losses in Eq. 3 use.
@@ -149,8 +149,8 @@ The world-model loss runs only on **real** replay steps ($T$), never on imagined
 $$
 \begin{aligned}
 \mathcal{L}_{\text{pred}}(\phi) &\doteq -\ln p_\phi(x_t \mid z_t, h_t) - \ln p_\phi(r_t \mid z_t, h_t) - \ln p_\phi(c_t \mid z_t, h_t) \\
-\mathcal{L}_{\text{dyn}}(\phi) &\doteq \max\big(1,\ \text{KL}\big[\operatorname{sg}(q_\phi(z_t \mid h_t, x_t))\ \big\|\ p_\phi(z_t \mid h_t)\big]\big) \\
-\mathcal{L}_{\text{rep}}(\phi) &\doteq \max\big(1,\ \text{KL}\big[q_\phi(z_t \mid h_t, x_t)\ \big\|\ \operatorname{sg}(p_\phi(z_t \mid h_t))\big]\big)
+\mathcal{L}_{\text{dyn}}(\phi) &\doteq \max\big(1,\ \text{KL}\big[\mathrm{sg}(q_\phi(z_t \mid h_t, x_t))\ \big\|\ p_\phi(z_t \mid h_t)\big]\big) \\
+\mathcal{L}_{\text{rep}}(\phi) &\doteq \max\big(1,\ \text{KL}\big[q_\phi(z_t \mid h_t, x_t)\ \big\|\ \mathrm{sg}(p_\phi(z_t \mid h_t))\big]\big)
 \end{aligned}
 $$
 
@@ -161,7 +161,7 @@ $$
 | $-\ln p_\phi(c_t \mid z_t, h_t)$ | `continue_loss` → `con` | `binary_cross_entropy_with_logits` (paper: "logistic regression"). Same $s_{t+1} \to c_t$ offset |
 | episode-boundary mask | `valid = ~is_first[:, 1:]` | Drops pairs where $s_{t+1}$ starts a new episode, so it can't be asked to predict the old episode's $r_t$, $c_t$ |
 | $\text{KL}[q \,\|\, p]$ | `categorical_kl` | $\sum_{k}\sum_{c} q \,(\ln q - \ln p)$ over $K$ latents × $C$ classes, on the unimixed probabilities |
-| $\operatorname{sg}(\cdot)$ | `.detach()` in `dyn_rep_losses` | The only difference between dyn and rep is which side is detached (and the weight) |
+| $\mathrm{sg}(\cdot)$ | `.detach()` in `dyn_rep_losses` | The only difference between dyn and rep is which side is detached (and the weight) |
 | $\max(1, \cdot)$ | `torch.clamp(..., min=free_nats)`, `free_nats = 1.0` | Applied per step, on the $(B, T)$ KL, **before** the mean |
 
 **Paper wording vs. code:** the paper says the prediction loss trains "the decoder and reward predictor via the symlog squared loss." In this repo (and the official code), the reward head uses twohot cross-entropy instead (Eqs. 10–12); only the decoder uses symlog squared error.
@@ -198,7 +198,7 @@ $\theta$ = actor weights, $\psi$ = critic weights (both separate from the world 
 |---|---|---|
 | $\pi_\theta$ | `agent.Actor` → `bounded_normal` | Covered with Eq. 6 |
 | $v_\psi(R_t \mid s_t)$ | `agent.Critic` (a `RewardHead`); `critic(feat)` → 255 bin logits | Same bins and twohot as the reward head |
-| $v_t = \mathbb{E}[v_\psi(\cdot \mid s_t)]$ | `critic.predict(feat)` = `bins_expectation(softmax(logits), bins)` | $\sum_i \operatorname{softmax}(\text{logits})_i\, b_i$ (Eq. 10) |
+| $v_t = \mathbb{E}[v_\psi(\cdot \mid s_t)]$ | `critic.predict(feat)` = `bins_expectation(softmax(logits), bins)` | $\sum_i \mathrm{softmax}(\text{logits})_i\, b_i$ (Eq. 10) |
 | $s_t$ | `get_feat` = $[h_t, z_t]$, 544 wide | Both networks read only the state. The critic is a $V(s)$, not TD3's $Q(s, a)$ |
 
 ## Eq. 5: critic loss and λ-return
@@ -248,7 +248,7 @@ The replay critic loss (Methods, weight 0.3) is a separate section below.
 - **Why $R_H = v_H$.** The dream stops at $s_H$. A reward from $s_H$ would need the reward head on $s_{H+1}$, which was never dreamed, so the critic's $v_H$ stands in for everything after the dream.
 - **Why backward.** It's recursive: each $R_t$ needs $R_{t+1}$, so start from $R_H = v_H$ and walk back. `returns[::-1]` flips the list back to forward order.
 - **Where each value goes.** $v_0 \dots v_{H-1}$ go into the advantage $R_t - v_t$ (Eq. 6); $v_1 \dots v_H$ go into the λ-return.
-- **Twohot is the label.** $-\ln p_\psi(R_t \mid s_t) = -\sum_i \operatorname{twohot}(R_t)_i \ln \operatorname{softmax}(\text{logits})_i$. With bins $[0, 10, 20]$: $R = 10$ gives label $[0, 1, 0]$ and loss $-\ln p_2$ (the paper's form exactly); $R = 15$ gives $[0, 0.5, 0.5]$ and loss $-0.5 \ln p_2 - 0.5 \ln p_3$.
+- **Twohot is the label.** $-\ln p_\psi(R_t \mid s_t) = -\sum_i \mathrm{twohot}(R_t)_i \ln \mathrm{softmax}(\text{logits})_i$. With bins $[0, 10, 20]$: $R = 10$ gives label $[0, 1, 0]$ and loss $-\ln p_2$ (the paper's form exactly); $R = 15$ gives $[0, 0.5, 0.5]$ and loss $-0.5 \ln p_2 - 0.5 \ln p_3$.
 - **Continue weights.** $w_t$ is the probability the walker is still alive at $s_t$. If $c_1 = 0.1$, then $r_1$ still fully counts, but $s_2$ is 90% likely to be a state after the walker fell, one that never happens in the real environment, so its critic loss is weighted by $w_2 = 0.1$.
 - **Slow critic.** Its weights trail the critic's (2% per step), and it is never trained. Its prediction $v^{\text{slow}}_t$ is twohot-encoded as a second label at the same state. Example: return 40, slow critic 20, so the critic is pulled to about 30 instead of jumping to 40. It acts as an anchor against chasing noisy targets. Unlike TD3, the slow copy doesn't compute the target; the return uses the current critic.
 
@@ -299,7 +299,7 @@ $$
 ## Eq. 6: actor loss
 
 $$
-\mathcal{L}(\theta) \doteq -\sum_{t=1}^{T} \operatorname{sg}\!\left(\frac{R^\lambda_t - v_\psi(s_t)}{\max(1, S)}\right) \log \pi_\theta(a_t \mid s_t) \;+\; \eta\, \mathrm{H}\big[\pi_\theta(a_t \mid s_t)\big],
+\mathcal{L}(\theta) \doteq -\sum_{t=1}^{T} \mathrm{sg}\!\left(\frac{R^\lambda_t - v_\psi(s_t)}{\max(1, S)}\right) \log \pi_\theta(a_t \mid s_t) \;+\; \eta\, \mathrm{H}\big[\pi_\theta(a_t \mid s_t)\big],
 \qquad \eta = 3 \times 10^{-4}
 $$
 
@@ -308,7 +308,7 @@ $$
 | $R^\lambda_t$ | `returns` from `lambda_return`, $(N, H)$ | The imagination λ-returns (Eq. 5), **every** column, not just column 0 |
 | $v_\psi(s_t)$ | `values[:, :-1]` | Critic at dream states $s_0 \dots s_{H-1}$; $v_H$ is only the bootstrap |
 | advantage $\hat A_t$ | `(returns - values[:, :-1]) / return_scale.scale()` | Computed under `no_grad` |
-| $\operatorname{sg}(\cdot)$ | `torch.no_grad()` + `advantage.detach()` in `actor_loss` | |
+| $\mathrm{sg}(\cdot)$ | `torch.no_grad()` + `advantage.detach()` in `actor_loss` | |
 | $\max(1, S)$ | `ReturnScale.scale()` | Eq. 7 |
 | $\pi_\theta(\cdot \mid s_t)$ | `actor(feat[:, :-1])` → `bounded_normal` | `Normal`, batch shape $(N, H, A)$; walker-walk $A = 6$ |
 | $\log \pi_\theta(a_t \mid s_t)$ | `dist.log_prob(actions[:, :-1]).sum(-1)` | Independent motors: log-probs add. Recomputed **with** gradient (`imagine` ran under `no_grad`) |
@@ -320,22 +320,22 @@ $$
 **Policy distribution (official code; the paper doesn't give it):** `bounded_normal`
 
 $$
-\mu = \tanh(\mu_{\text{raw}}), \qquad \sigma = (1 - 0.1)\,\operatorname{sigmoid}(\sigma_{\text{raw}} + 2) + 0.1
+\mu = \tanh(\mu_{\text{raw}}), \qquad \sigma = (1 - 0.1)\,\mathrm{sigmoid}(\sigma_{\text{raw}} + 2) + 0.1
 $$
 
 - $\mu \in (-1, 1)$, matching DMC's action range. Samples are **not** squashed, so there's no tanh Jacobian in `log_prob`.
-- $\sigma \in [0.1, 1]$. At initialization (output weights × 0.01, so $\sigma_{\text{raw}} \approx 0$), $\sigma = 0.9 \cdot \operatorname{sigmoid}(2) + 0.1 \approx 0.89$.
+- $\sigma \in [0.1, 1]$. At initialization (output weights × 0.01, so $\sigma_{\text{raw}} \approx 0$), $\sigma = 0.9 \cdot \mathrm{sigmoid}(2) + 0.1 \approx 0.89$.
 - Out-of-range samples: the environment clips them, and the RSSM rescales the copy fed to the GRU, $a / \max(1, \lvert a \rvert)$ (`rssm.py` line 106), which element-wise is a clip to $\pm 1$. `log_prob` uses the unclipped sample. Metric `act_oob` tracks how often this happens.
 
 ## Eq. 7: return scale
 
 $$
-S \doteq \operatorname{EMA}\big(\operatorname{Per}(R^\lambda_t, 95) - \operatorname{Per}(R^\lambda_t, 5),\ 0.99\big)
+S \doteq \mathrm{EMA}\big(\mathrm{Per}(R^\lambda_t, 95) - \mathrm{Per}(R^\lambda_t, 5),\ 0.99\big)
 $$
 
 | Term | Code | Notes |
 |---|---|---|
-| $\operatorname{Per}(R^\lambda, 95)$, $\operatorname{Per}(R^\lambda, 5)$ | `torch.quantile(returns.flatten(), 0.95 / 0.05)` | Over all $N \cdot H$ imagination returns of this step |
+| $\mathrm{Per}(R^\lambda, 95)$, $\mathrm{Per}(R^\lambda, 5)$ | `torch.quantile(returns.flatten(), 0.95 / 0.05)` | Over all $N \cdot H$ imagination returns of this step |
 | EMA, decay 0.99 | `ReturnScale.update`: `spread = 0.99 * spread + 0.01 * new` | First call initializes $S$ to the first spread |
 | $\max(1, S)$ | `ReturnScale.scale()` | Returns 1 before the first update |
 
@@ -344,7 +344,7 @@ Paper: "Previous work typically normalizes advantages rather than returns, which
 ### In my own words
 
 - **Advantage.** $R^\lambda_t - v_t$: how much better the dream went from $s_t$ than the critic expected. Example: $22.4 - 20 = 2.4$. Positive makes $a_t$ more likely; negative makes it less likely.
-- **Why $\operatorname{sg}$.** The advantage is the grade. The actor should improve by changing which actions it picks ($\log \pi$), not by changing the grade (moving $v_t$ or the returns).
+- **Why $\mathrm{sg}$.** The advantage is the grade. The actor should improve by changing which actions it picks ($\log \pi$), not by changing the grade (moving $v_t$ or the returns).
 - **The sign.** Loss $= -(2.4 \log \pi + \eta \mathrm{H})$. To shrink it, the optimizer pushes $\log \pi$ up, so the action becomes more likely.
 - **Entropy.** It pushes only on $\sigma$. With $\eta = 0$, the policy would collapse onto whatever it already does most and stop exploring.
 - **$S$, percentiles.** One step gives $16 \times 5 = 80$ returns. If $P_5 = 10$ and $P_{95} = 50$, the spread is 40; EMA example $0.99(38) + 0.01(40) = 38.02$. One outlier at 500 would make max − min $= 490$ (shrinking every advantage ~12×), but leaves $P_{95} - P_5 \approx 40$.
@@ -356,36 +356,36 @@ Paper: "Previous work typically normalizes advantages rather than returns, which
 ## Eq. 8–9: symlog squared loss
 
 $$
-\mathcal{L}(\theta) \doteq \tfrac{1}{2}\big(f(x, \theta) - \operatorname{symlog}(y)\big)^2,
+\mathcal{L}(\theta) \doteq \tfrac{1}{2}\big(f(x, \theta) - \mathrm{symlog}(y)\big)^2,
 \qquad
-\operatorname{symlog}(x) \doteq \operatorname{sign}(x)\ln(\lvert x \rvert + 1),
+\mathrm{symlog}(x) \doteq \mathrm{sign}(x)\ln(\lvert x \rvert + 1),
 \qquad
-\operatorname{symexp}(x) \doteq \operatorname{sign}(x)\big(\exp(\lvert x \rvert) - 1\big)
+\mathrm{symexp}(x) \doteq \mathrm{sign}(x)\big(\exp(\lvert x \rvert) - 1\big)
 $$
 
 | Term | Code | Notes |
 |---|---|---|
 | symlog, symexp | `distributions.symlog`, `distributions.symexp` | `log1p` / `expm1` for precision near 0 |
 | Eq. 8 | `losses.recon_loss`: `sum((recon - symlog(obs).detach())**2, -1)` | Decoder only. No $\tfrac{1}{2}$, summed over observation dims: a constant rescale, same minimum |
-| prediction in real units | $\operatorname{symexp}(f)$ | Not needed for the loss |
+| prediction in real units | $\mathrm{symexp}(f)$ | Not needed for the loss |
 
 ### In my own words
 
-- **Why not $\ln$.** $\ln$ is undefined for negatives and $\ln(0) = -\infty$. symlog keeps the sign, is finite at 0 (the $+1$), is close to $x$ near 0, and compresses large magnitudes: $\operatorname{symlog}(1) = 0.69$, $\operatorname{symlog}(100) = 4.6$.
+- **Why not $\ln$.** $\ln$ is undefined for negatives and $\ln(0) = -\infty$. symlog keeps the sign, is finite at 0 (the $+1$), is close to $x$ near 0, and compresses large magnitudes: $\mathrm{symlog}(1) = 0.69$, $\mathrm{symlog}(100) = 4.6$.
 - **Why it helps.** Walker joint velocities reach about ±30 while angles stay within about ±3. In raw units the velocity errors would dominate the squared error; after symlog it's $3.43$ vs. $1.39$, so neither drowns out the other.
 
 ## Eq. 10–12: bins, expectation, twohot
 
 $$
-B \doteq \operatorname{symexp}\big([-20, \ldots, +20]\big),
+B \doteq \mathrm{symexp}\big([-20, \ldots, +20]\big),
 \qquad
-\hat y \doteq \operatorname{softmax}(f(x))^{\mathsf T} B,
+\hat y \doteq \mathrm{softmax}(f(x))^{\mathsf T} B,
 \qquad
-\mathcal{L}(\theta) \doteq -\operatorname{twohot}(y)^{\mathsf T} \log \operatorname{softmax}(f(x, \theta))
+\mathcal{L}(\theta) \doteq -\mathrm{twohot}(y)^{\mathsf T} \log \mathrm{softmax}(f(x, \theta))
 $$
 
 $$
-\operatorname{twohot}(y)_i \doteq
+\mathrm{twohot}(y)_i \doteq
 \begin{cases}
 \lvert b_{k+1} - y \rvert \,/\, \lvert b_{k+1} - b_k \rvert & \text{if } i = k \\
 \lvert b_k - y \rvert \,/\, \lvert b_{k+1} - b_k \rvert & \text{if } i = k + 1 \\
@@ -397,8 +397,8 @@ $$
 | Term | Code | Notes |
 |---|---|---|
 | $B$ (Eq. 10) | `make_bins(255, 20.0)`, registered as a buffer | Mirrors the non-negative half so the middle bin is exactly 0 and the bins are exactly symmetric |
-| $\hat y = \operatorname{softmax}^{\mathsf T} B$ (Eq. 10) | `bins_expectation`, called by `RewardHead.predict` / `Critic.predict` | Sums outward from the middle bin so uniform probabilities give exactly 0 |
-| $\operatorname{twohot}(y)$ (Eq. 12) | `twohot_encode`: `searchsorted` for the bin above, weights = opposite distance / gap | Targets outside the range are clamped to the end bins |
+| $\hat y = \mathrm{softmax}^{\mathsf T} B$ (Eq. 10) | `bins_expectation`, called by `RewardHead.predict` / `Critic.predict` | Sums outward from the middle bin so uniform probabilities give exactly 0 |
+| $\mathrm{twohot}(y)$ (Eq. 12) | `twohot_encode`: `searchsorted` for the bin above, weights = opposite distance / gap | Targets outside the range are clamped to the end bins |
 | Eq. 11 | `losses.reward_loss`: `-(label * log_softmax(logits)).sum(-1)` | Used by the reward head, the critic, the replay critic and the slow-critic regularizer |
 | zero-init output | `RewardHead` / `Critic` output layer weights = 0 | Paper p. 6: random init "can result in large predicted rewards that can delay the onset of learning" |
 
@@ -425,13 +425,13 @@ The paper's world-model paragraph says the reward head uses symlog MSE; the offi
 
 **Method A, symlog MSE.** One output $o$:
 
-$$\text{loss} = \big(o - \operatorname{symlog}(r)\big)^2, \qquad \text{prediction} = \operatorname{symexp}(o)$$
+$$\text{loss} = \big(o - \mathrm{symlog}(r)\big)^2, \qquad \text{prediction} = \mathrm{symexp}(o)$$
 
-Example: $r = 100$, target $\operatorname{symlog}(100) = 4.62$. Output $o = 4.0$ gives loss $0.38$ and prediction $\operatorname{symexp}(4.0) = 53.6$.
+Example: $r = 100$, target $\mathrm{symlog}(100) = 4.62$. Output $o = 4.0$ gives loss $0.38$ and prediction $\mathrm{symexp}(4.0) = 53.6$.
 
 **Method B, twohot.** 255 logits $\to$ softmax $\to$ probabilities $p_i$ over fixed bins $b_i$:
 
-$$\text{prediction} = \sum_{i=1}^{255} p_i\, b_i, \qquad \text{loss} = -\sum_{i=1}^{255} y_i \ln p_i, \quad y = \operatorname{twohot}(r)$$
+$$\text{prediction} = \sum_{i=1}^{255} p_i\, b_i, \qquad \text{loss} = -\sum_{i=1}^{255} y_i \ln p_i, \quad y = \mathrm{twohot}(r)$$
 
 Example: $r = 100$ gives the label 0.71 on bin 95.25 and 0.29 on bin 111.66, so the loss is $-(0.71 \ln p_{95.25} + 0.29 \ln p_{111.66})$, minimized when the prediction is $0.71(95.25) + 0.29(111.66) = 100$.
 
@@ -441,7 +441,7 @@ Example: $r = 100$ gives the label 0.71 on bin 95.25 and 0.29 on bin 111.66, so 
 
 | Method | Learns | Prediction |
 |---|---|---|
-| symlog MSE | $o$ = average of $\operatorname{symlog}(0) = 0$ and $\operatorname{symlog}(100) = 4.62$ = 2.31 | $\operatorname{symexp}(2.31) = e^{2.31} - 1 \approx 9.1$ |
+| symlog MSE | $o$ = average of $\mathrm{symlog}(0) = 0$ and $\mathrm{symlog}(100) = 4.62$ = 2.31 | $\mathrm{symexp}(2.31) = e^{2.31} - 1 \approx 9.1$ |
 | twohot | 50% on bin 0; 50% split 0.71 / 0.29 on 95.25 / 111.66 | $0.5 \times 0 + 0.5 \times 100 = 50$ |
 
 Squashing shrinks big values more than small ones, so averaging in symlog space drags the prediction toward the small outcome. Twohot averages in real units.

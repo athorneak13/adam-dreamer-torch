@@ -14,3 +14,5 @@ logs/
 checkpoints/
 wandb/
 results/**/*.tgz
+docs/implementation-overview.md
+CLAUDE.md
