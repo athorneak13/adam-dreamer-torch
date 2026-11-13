@@ -25,7 +25,7 @@ All results are on walker-walk with proprioceptive observations. Curves show env
 | end of run | 500k | 1M | 942.2 | 952.3 | 960.2 | 951.6 ± 7.4 |
 | paper budget | 250k | 500k | 630.2 | 684.4 | 914.8 | 743.2 ± 123.4 |
 
-These runs used commit `2bb3faf` (`results/walker_walk_v1/run_info.txt`), which predates the action clipping inside the dynamics (`701d669`; see [Differences](#differences-from-the-paper-and-the-official-code)).
+These runs used commit `2bb3faf`, which predates the action clipping inside the dynamics (`701d669`; see [Differences](#differences-from-the-paper-and-the-official-code)).
 
 **Published DreamerV3.** The paper's Proprio Control benchmark has a budget of 500K environment steps. The official repository publishes per-task score curves ([`scores/dmc_proprio-dreamerv3.json.gz`](https://github.com/danijar/dreamerv3/tree/main/scores)): for walker-walk, 5 seeds, logged every 10K steps up to 490K. Averaging each seed's last 3 logged points (470K–490K):
 
