@@ -419,6 +419,48 @@ $$
 - **The loss is just $-\ln p$.** With bins $[0, 10, 20]$: $y = 10$ gives label $[0, 1, 0]$ and loss $-\ln p_2$; $y = 15$ gives $[0, 0.5, 0.5]$ and $-0.5\ln p_2 - 0.5\ln p_3$.
 - **No symlog in this loss.** The bins already carry the compression (they're symexp-spaced), and the twohot split is linear in real units.
 
+### Why twohot and not symlog MSE (the paper vs. the official code)
+
+The paper's world-model paragraph says the reward head uses symlog MSE; the official code (and this repo) uses twohot. Both predict one number, the reward $r$.
+
+**Method A, symlog MSE.** One output $o$:
+
+$$\text{loss} = \big(o - \operatorname{symlog}(r)\big)^2, \qquad \text{prediction} = \operatorname{symexp}(o)$$
+
+Example: $r = 100$, target $\operatorname{symlog}(100) = 4.62$. Output $o = 4.0$ gives loss $0.38$ and prediction $\operatorname{symexp}(4.0) = 53.6$.
+
+**Method B, twohot.** 255 logits $\to$ softmax $\to$ probabilities $p_i$ over fixed bins $b_i$:
+
+$$\text{prediction} = \sum_{i=1}^{255} p_i\, b_i, \qquad \text{loss} = -\sum_{i=1}^{255} y_i \ln p_i, \quad y = \operatorname{twohot}(r)$$
+
+Example: $r = 100$ gives the label 0.71 on bin 95.25 and 0.29 on bin 111.66, so the loss is $-(0.71 \ln p_{95.25} + 0.29 \ln p_{111.66})$, minimized when the prediction is $0.71(95.25) + 0.29(111.66) = 100$.
+
+**Zero-init output.** The last layer (64 → 255) starts with zero weights and bias, so every logit is 0, every $p_i = 1/255$, and the prediction is exactly 0 (the bins are symmetric, so each $+b$ cancels its $-b$). A random init could put probability on a far bin like $4.85 \times 10^8$; the paper says such random initial predictions "can delay the onset of learning."
+
+**Reason 1: unbiased under noisy targets.** At one state, $r = 0$ half the time and $100$ half the time, so the true expected reward is 50.
+
+| Method | Learns | Prediction |
+|---|---|---|
+| symlog MSE | $o$ = average of $\operatorname{symlog}(0) = 0$ and $\operatorname{symlog}(100) = 4.62$ = 2.31 | $\operatorname{symexp}(2.31) = e^{2.31} - 1 \approx 9.1$ |
+| twohot | 50% on bin 0; 50% split 0.71 / 0.29 on 95.25 / 111.66 | $0.5 \times 0 + 0.5 \times 100 = 50$ |
+
+Squashing shrinks big values more than small ones, so averaging in symlog space drags the prediction toward the small outcome. Twohot averages in real units.
+
+**Reason 2: the gradient on the logits is $p - y$, always in $[-1, 1]$.** Derivation with 3 bins, logits $\ell_1, \ell_2, \ell_3$, label $y = [y_1, y_2, y_3]$:
+
+1. Softmax with shared denominator $S = e^{\ell_1} + e^{\ell_2} + e^{\ell_3}$: $\;p_1 = e^{\ell_1}/S,\ p_2 = e^{\ell_2}/S,\ p_3 = e^{\ell_3}/S$.
+2. Log of one: $\ln p_2 = \ln e^{\ell_2} - \ln S = \ell_2 - \ln S$ (using $\ln(a/b) = \ln a - \ln b$ and $\ln e^x = x$). This is `log_softmax`. Check with $\ell = [0, 1, 2]$: $S = 11.107$, and $\ln p_3 = \ln(7.389/11.107) = -0.408 = 2 - \ln 11.107$.
+3. Substitute into the loss:
+$$\text{loss} = -\big(y_1(\ell_1 - \ln S) + y_2(\ell_2 - \ln S) + y_3(\ell_3 - \ln S)\big)$$
+4. Multiply out; the label sums to 1:
+$$\text{loss} = -y_1 \ell_1 - y_2 \ell_2 - y_3 \ell_3 + (y_1 + y_2 + y_3)\ln S = -y_1 \ell_1 - y_2 \ell_2 - y_3 \ell_3 + \ln S$$
+5. Differentiate with respect to $\ell_2$. Only $-y_2 \ell_2$ in the first three terms contains $\ell_2$, giving $-y_2$. For $\ln S$, the chain rule gives $\frac{1}{S} e^{\ell_2} = p_2$. So:
+$$\frac{\partial\, \text{loss}}{\partial \ell_2} = p_2 - y_2 \qquad\text{(and likewise } p_1 - y_1,\ p_3 - y_3\text{)}$$
+
+Numbers at init ($p = [\tfrac13, \tfrac13, \tfrac13]$, $y = [0, 0.71, 0.29]$): gradient $= [+0.33, -0.38, +0.04]$. Descent raises $\ell_2$, lowers $\ell_1$, barely moves $\ell_3$. Each entry is a difference of two probabilities, so it stays in $[-1, 1]$ whether the reward was 100 or 100,000.
+
+In general notation, $\text{loss} = -\sum_i y_i \ln p_i$ with $p_i = e^{\ell_i} / \sum_j e^{\ell_j}$, and $\partial\,\text{loss} / \partial \ell_k = p_k - y_k$. Here $i$ and $j$ both mean "each bin" (two letters only so the two sums don't get mixed up), and $k$ is the one logit being differentiated.
+
 ---
 
 ## Unnumbered pieces
@@ -514,11 +556,43 @@ $$
 | $B \times T$ | $16 \times 64$ |
 | replay ratio | 512 (the config comment cites the paper; the official repo's `dmc_proprio` preset uses `train_ratio: 1024`) |
 
-**One loop pass** (`train.py`):
+**What the loop actually does, plainly**
 
-1. `agent.policy`: posterior `obs_step` on the new observation, then an actor sample (random during warm-up).
-2. Clip to $[-1, 1]$, step all 16 envs, store 16 transitions.
-3. `updates_due += 16`, then `train_step` while `updates_due >= 2`, which is **8 gradient steps**.
+```
+repeat:
+    step all 16 envs once        → 16 new transitions into the buffer
+    do 8 train steps             → 8 gradient updates
+```
+
+- After every step of the 16 parallel envs, do **8 train steps**. Always 8, once warm-up is over (the first 5,120 transitions, i.e. 320 parallel steps, are random actions with 0 train steps).
+- Each train step samples 16 sequences of 64 transitions ($= 1024$ transitions) and does one gradient update of the world model, critic and actor.
+- Why 8: `train_every: 2` means "one train step per 2 new transitions," and $16 / 2 = 8$.
+
+**How the code counts to 8** (`train.py`). `updates_due` is a budget: each new transition adds 1, and each train step spends `train_every` = 2. `train_every` itself never changes.
+
+| | `train_every` | `updates_due` |
+|---|---|---|
+| after the 16 envs step | 2 | 16 |
+| after train step 1 | 2 | 14 |
+| after train step 2 | 2 | 12 |
+| … | 2 | … |
+| after train step 8 | 2 | 0, loop stops |
+
+**The replay ratio, from that loop**
+
+```
+repeat:
+    step all 16 envs once        → 16 new transitions
+    do 8 train steps             → each uses 1024 transitions → 8 × 1024 = 8192 transitions used
+```
+
+$$\text{replay ratio} = \frac{\text{transitions used for training}}{\text{new transitions}} = \frac{8192}{16} = 512$$
+
+For every new transition collected, 512 transitions get fed through training, so over the run each transition is used about 512 times on average. It changes if either the number of train steps per loop or the batch size changes. Derivation of the config formula:
+
+1. Each train step samples one batch of $B \cdot T = 1024$ transitions, so transitions used $=$ train steps $\times 1024$.
+2. Replay ratio $= \dfrac{\text{train steps} \times 1024}{\text{new transitions}}$.
+3. Regroup: $= \dfrac{\text{train steps}}{\text{new transitions}} \times 1024 = \dfrac{8}{16} \times 1024 = 512$. The first factor, $1/2$, is exactly what `train_every: 2` sets.
 
 **In my own words**
 

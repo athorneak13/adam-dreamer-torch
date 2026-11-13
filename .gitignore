@@ -9,6 +9,8 @@ logdir/
 *.pt
 .DS_Store
 returns*.csv
+!results/**/returns*.csv
 logs/
 checkpoints/
 wandb/
+results/**/*.tgz
