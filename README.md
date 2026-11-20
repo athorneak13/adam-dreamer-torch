@@ -39,7 +39,7 @@ The paper reports 936 for walker-walk at 500K steps (Table 11). Its environment 
 
 ### Imagination horizon ablation
 
-H ∈ {5, 15, 30}, 3 seeds each, **300k agent steps per run (600k env frames)**, compared with 500k agent steps for the runs above. With action repeat 2, H = 5, 15 and 30 imagine 10, 30 and 60 simulator steps ahead.
+H ∈ {5, 15, 30}, 3 seeds each, **300k agent steps per run (600k env frames)**, compared with 500k agent steps for the runs above. H = 60 was added afterwards and trained for the full 500k agent steps. With action repeat 2, H = 5, 15, 30 and 60 imagine 10, 30, 60 and 120 simulator steps ahead (0.25, 0.75, 1.5 and 3 s).
 
 ![imagination horizon ablation](results/horizon_ablation.png)
 
@@ -48,10 +48,18 @@ H ∈ {5, 15, 30}, 3 seeds each, **300k agent steps per run (600k env frames)**,
 | H = 5 | 674.0 | 624.0 | 610.7 | 636.2 ± 27.2 |
 | H = 15 | 659.5 | 822.9 | 903.2 | 795.2 ± 101.4 |
 | H = 30 | 945.9 | 908.4 | 935.8 | 930.1 ± 15.8 |
+| H = 60, at 300k agent steps | 953.9 | 891.7 | 954.2 | 933.3 ± 29.4 |
+| H = 60, end of run (500k agent steps) | 961.3 | 963.3 | 961.8 | 962.1 ± 0.9 |
 
-All 9 runs reached 300k agent steps. The H = 15 row is not directly comparable to the 3-seed table above: it trained for 600k frames instead of 1M, and with a later version of the code (commit `8d4db58`, which includes the action clipping).
+All 12 runs finished without errors; the H = 60 rows are read both at 300k agent steps, for comparison with the other horizons, and at the end of the run. The H = 15 row is not directly comparable to the 3-seed table above: it trained for 600k frames instead of 1M, and with a later version of the code (commit `8d4db58`, which includes the action clipping).
 
-Longer horizons learned faster and more reliably. Every H = 30 seed passed a batch-mean return of 800 by 208k agent steps (at 152k, 192k and 208k). Two H = 15 seeds passed it later (216k, 288k) and the third had not by 300k. No H = 5 seed passed it; their best batch mean was 687. The critic bootstraps beyond the horizon in every case ($R_H = v_H$), so the shorter horizons still see a value estimate of what follows. But at H = 5 the actor's return is built from only 10 simulator steps, about 0.25 s, which is too short to show where a stride leads. Up to H = 30, longer rollouts showed no cost from compounding model error.
+Longer horizons learned faster and more reliably. Every H = 30 seed passed a batch-mean return of 800 by 208k agent steps (at 152k, 192k and 208k). Two H = 15 seeds passed it later (216k, 288k) and the third had not by 300k. No H = 5 seed passed it; their best batch mean was 687. The critic bootstraps beyond the horizon in every case ($R_H = v_H$), so the shorter horizons still see a value estimate of what follows. But at H = 5 the actor's return is built from only 10 simulator steps, about 0.25 s, which is too short to show where a stride leads.
+
+**H = 60.** Doubling the horizon again did not help. At 300k agent steps H = 60 matches H = 30 (933.3 ± 29.4 against 930.1 ± 15.8), and its seeds passed 800 at 136k, 208k and 240k agent steps, about the same as H = 30 (152k, 192k, 208k). Trained on to 500k agent steps it finished at 962.1 ± 0.9, the tightest spread of any configuration here, but within noise of the H = 15 runs at the same step count (951.6 ± 7.4, older code). On walker the benefit of a longer horizon saturates by H = 30, and up to H = 60 (3 s of imagined time) longer rollouts showed no cost from compounding model error either.
+
+![Real walker (left) and the actor walking inside the H = 60 world model (right)](results/dream_h60/real_vs_imagined.gif)
+
+The H = 60 agent (seed 0, 491k agent steps), shown the same way as the second GIF at the top: after 10 real context steps, the actor walks for 100 steps (5 s) inside its world model without falling. The runs, curves and this GIF are also in the [W&B report](https://forge.coreweave.com/wandb/adamthorne91-personal/adam-dreamer-torch/reports/DreamerV3-from-scratch-walker-walk-training-runs--VmlldzoxODMwMjc3MA).
 
 ## Reproduce
 
@@ -79,7 +87,7 @@ uv run python -m src.train --config configs/dmc_walker_walk.yaml --seed 0 \
     --run-name walker_h5_seed0 --set train.horizon=5 --set run.total_steps=300000
 ```
 
-[`scripts/launch_horizon_sweep.sh`](scripts/launch_horizon_sweep.sh) launches all 9 runs (H ∈ {5, 15, 30} × seeds 0–2) in parallel on one GPU machine, and [`scripts/setup_gpu.sh`](scripts/setup_gpu.sh) prepares a fresh Linux GPU VM. To regenerate the figures and tables:
+[`scripts/launch_horizon_sweep.sh`](scripts/launch_horizon_sweep.sh) launches all 9 runs (H ∈ {5, 15, 30} × seeds 0–2) in parallel on one GPU machine (the H = 60 runs: `HORIZONS=60 STEPS=500000 bash scripts/launch_horizon_sweep.sh`), and [`scripts/setup_gpu.sh`](scripts/setup_gpu.sh) prepares a fresh Linux GPU VM. To regenerate the figures and tables:
 
 ```bash
 uv run --with matplotlib python -m scripts.plot_results

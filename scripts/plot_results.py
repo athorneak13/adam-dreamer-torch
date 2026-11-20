@@ -6,6 +6,7 @@ Inputs (written by src/train.py: one row per finished episode, "step,return", wh
 step = agent steps summed over all envs):
   results/walker_walk_v1/returns_seed{0,1,2}.csv          H = 15, 500k agent steps
   results/horizon_sweep/returns_walker_h{5,15,30}_seed{0,1,2}.csv   300k agent steps
+  results/horizon_sweep/returns_walker_h60_seed{0,1,2}.csv          500k agent steps
 
 Outputs: results/walker_walk.png, results/horizon_ablation.png, and the Markdown
 tables printed to stdout.
@@ -37,7 +38,7 @@ NUM_ENVS = CFG.env.num_envs
 FINAL_EPISODES = 3 * NUM_ENVS          # the last 3 batches of episodes = 48 per seed
 
 # Validated categorical slots 1-3 (dataviz reference palette, light mode)
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a"]
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#8a5cd6"]   # 4th: purple, as the dream walker
 SURFACE, INK, INK_2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e1"
 
 
@@ -46,6 +47,7 @@ def load_returns(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return data[:, 0], data[:, 1]
 
 
+SWEEP_STEPS = 300_000                  # agent steps per run in the H = 5/15/30 sweep
 PAPER_BUDGET_FRAMES = 500_000          # DreamerV3's Proprio Control budget: 500K environment steps
 
 
@@ -134,7 +136,7 @@ def main():
                  (f"walker-walk, H = 15, at {PAPER_BUDGET_FRAMES // 1000}k frames", at_budget)]), "\n")
 
     groups, rows = [], []
-    for h in (5, 15, 30):
+    for h in (5, 15, 30, 60):
         paths = sorted((res / "horizon_sweep").glob(f"returns_walker_h{h}_seed*.csv"))
         if len(paths) < 3:
             print(f"H = {h}: only {len(paths)} seed files found")
@@ -144,6 +146,9 @@ def main():
         groups.append((f"H = {h}", frames, curves))
         rows.append((f"H = {h}", finals))
         print(f"H = {h}: {len(paths)} seeds, last frame {int(frames[-1]):,}")
+        if h == 60:                            # also read at 300k agent steps, like the sweep
+            at_300k = np.array([final_up_to(p, SWEEP_STEPS * ACTION_REPEAT) for p in paths])
+            rows.append(("H = 60, at 300k agent steps", at_300k))
     plot(groups, "Imagination horizon, walker-walk, 3 seeds each", res / "horizon_ablation.png")
     print(table(rows))
 
