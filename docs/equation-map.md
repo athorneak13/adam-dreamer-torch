@@ -23,7 +23,7 @@ Maps each equation in DreamerV3 (Hafner et al., [arXiv 2301.04104](https://arxiv
 
 ## Eq. 1: RSSM and world-model heads
 
-$$
+```math
 \begin{aligned}
 \text{Sequence model:}\quad & h_t = f_\phi(h_{t-1}, z_{t-1}, a_{t-1}) \\
 \text{Encoder:}\quad & z_t \sim q_\phi(z_t \mid h_t, x_t) \\
@@ -32,7 +32,7 @@ $$
 \text{Continue predictor:}\quad & \hat c_t \sim p_\phi(\hat c_t \mid h_t, z_t) \\
 \text{Decoder:}\quad & \hat x_t \sim p_\phi(\hat x_t \mid h_t, z_t)
 \end{aligned}
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -55,15 +55,15 @@ $$
 4. **Block gate layer.** `gru_gates = BlockLinear(G, 64, 192)` gives 3 raw values per memory unit, split by `torch.chunk` into $\text{raw}_r$, $\text{raw}_c$, $\text{raw}_u$, each $(B, 8, 64)$.
 5. **Gate equations** (element-wise, no weights):
 
-$$
+```math
 r = \sigma(\text{raw}_r), \qquad
 \tilde h = \tanh(r \odot \text{raw}_c), \qquad
 u = \sigma(\text{raw}_u - 1)
-$$
+```
 
-$$
+```math
 h_t = u \odot \tilde h + (1 - u) \odot h_{t-1}
-$$
+```
 
 6. **Flatten** $(B, 8, 64) \to (B, 512)$ to get $h_t$.
 
@@ -82,9 +82,9 @@ That's about 5× fewer at both sizes. `networks.BlockLinear` stores the $G$ smal
 
 **RMSNorm** (`networks.RMSNorm`):
 
-$$
+```math
 y = \frac{x}{\sqrt{\tfrac{1}{n}\sum_i x_i^2 + \epsilon}} \odot g
-$$
+```
 
 It normalizes each sample's vector to RMS ≈ 1 (per sample, not per batch), then a learned gain $g$, initialized to ones, sets the scale. $\epsilon$ prevents division by zero. It follows every hidden layer in the model.
 
@@ -92,19 +92,19 @@ It normalizes each sample's vector to RMS ≈ 1 (per sample, not per batch), the
 
 `sample_categorical` turns logits $(\dots, K C)$ into:
 
-$$
+```math
 \tilde p = 0.99 \cdot \mathrm{softmax}(\ell) + 0.01 \cdot \tfrac{1}{C}, \qquad
 z = \mathrm{onehot}(\text{sample} \sim \tilde p) + \tilde p - \mathrm{sg}(\tilde p)
-$$
+```
 
 $K$ independent categoricals with $C$ classes each, flattened to $K C$. The forward pass is the one-hot sample; the backward pass uses the gradient of $\tilde p$ (straight-through). The 1% uniform mix (paper: "unimix") keeps every probability above zero, so the KL losses stay finite. The unimixed $\tilde p$ is what the KL losses in Eq. 3 use.
 
 **In my own words** ($K = 4$ dice, $C = 8$ faces):
 
 - **Softmax per die (`dim=-1`).** Each die's 8 probabilities sum to 1, and each die picks one face, so $z$ has 4 ones among 32 numbers. That gives $8^4 = 4096$ possible codes; a single softmax over all 32 would give only 32. Separate dice let each one encode a different aspect of the state.
-- **Unimix.** $\tilde p = 0.99\,p + 0.01/8$, so no face drops below $0.00125$. Without it, a prior with $p = 0$ where $q > 0$ gives $\ln 0 = -\infty$, an infinite KL, and `NaN` gradients (the paper's "spikes in KL losses").
+- **Unimix.** $`\tilde p = 0.99\,p + 0.01/8`$, so no face drops below $0.00125$. Without it, a prior with $p = 0$ where $q > 0$ gives $\ln 0 = -\infty$, an infinite KL, and `NaN` gradients (the paper's "spikes in KL losses").
 - **Why straight-through.** `Categorical.sample()` returns integers, so nothing can backpropagate through the sampled face. Without a fix, no gradient from the heads would reach the posterior, the encoder or the GRU through $z$.
-- **What `onehot + probs - probs.detach()` does.** Forward: the two `probs` terms cancel, so $z$ is exactly the one-hot. Backward: $z = \text{probs} + c$ with $c$ a constant, so $\partial z / \partial\,\text{probs} = 1$, the gradient reaches the logits through `probs` once, and the sampling path is dead.
+- **What `onehot + probs - probs.detach()` does.** Forward: the two `probs` terms cancel, so $z$ is exactly the one-hot. Backward: $z = \text{probs} + c$ with $c$ a constant, so $`\partial z / \partial\,\text{probs} = 1`$, the gradient reaches the logits through `probs` once, and the sampling path is dead.
 - **`probs` used twice.** `probs` goes into $z$ (for the heads and the GRU) and is also returned for the KL. Autograd adds the two gradients; that's the normal chain rule, not double counting.
 
 ### Rolling the RSSM through time
@@ -128,10 +128,10 @@ It runs $H$ steps under `torch.no_grad()` and returns states $(N, H+1, \dots)$ a
 
 ## Eq. 2: total world-model loss
 
-$$
+```math
 \mathcal{L}(\phi) \doteq \mathbb{E}_{q_\phi}\Big[\textstyle\sum_{t=1}^{T}\big(\beta_{\text{pred}}\,\mathcal{L}_{\text{pred}}(\phi) + \beta_{\text{dyn}}\,\mathcal{L}_{\text{dyn}}(\phi) + \beta_{\text{rep}}\,\mathcal{L}_{\text{rep}}(\phi)\big)\Big],
 \qquad \beta_{\text{pred}} = 1,\ \beta_{\text{dyn}} = 1,\ \beta_{\text{rep}} = 0.1
-$$
+```
 
 $\phi$ is every world-model weight: encoder, RSSM (GRU, prior, posterior), decoder, reward head, continue head.
 
@@ -146,13 +146,13 @@ The world-model loss runs only on **real** replay steps ($T$), never on imagined
 
 ## Eq. 3: prediction, dynamics and representation losses
 
-$$
+```math
 \begin{aligned}
 \mathcal{L}_{\text{pred}}(\phi) &\doteq -\ln p_\phi(x_t \mid z_t, h_t) - \ln p_\phi(r_t \mid z_t, h_t) - \ln p_\phi(c_t \mid z_t, h_t) \\
 \mathcal{L}_{\text{dyn}}(\phi) &\doteq \max\big(1,\ \text{KL}\big[\mathrm{sg}(q_\phi(z_t \mid h_t, x_t))\ \big\|\ p_\phi(z_t \mid h_t)\big]\big) \\
 \mathcal{L}_{\text{rep}}(\phi) &\doteq \max\big(1,\ \text{KL}\big[q_\phi(z_t \mid h_t, x_t)\ \big\|\ \mathrm{sg}(p_\phi(z_t \mid h_t))\big]\big)
 \end{aligned}
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -160,7 +160,7 @@ $$
 | $-\ln p_\phi(r_t \mid z_t, h_t)$ | `reward_loss` → `rew` | Twohot cross-entropy (Eqs. 11–12). Head on $s_{t+1}$ vs. $r_t$: `reward_logits[:, 1:]` vs. `reward[:, :-1]` |
 | $-\ln p_\phi(c_t \mid z_t, h_t)$ | `continue_loss` → `con` | `binary_cross_entropy_with_logits` (paper: "logistic regression"). Same $s_{t+1} \to c_t$ offset |
 | episode-boundary mask | `valid = ~is_first[:, 1:]` | Drops pairs where $s_{t+1}$ starts a new episode, so it can't be asked to predict the old episode's $r_t$, $c_t$ |
-| $\text{KL}[q \,\|\, p]$ | `categorical_kl` | $\sum_{k}\sum_{c} q \,(\ln q - \ln p)$ over $K$ latents × $C$ classes, on the unimixed probabilities |
+| $`\text{KL}[q \,\Vert\, p]`$ | `categorical_kl` | $`\sum_{k}\sum_{c} q \,(\ln q - \ln p)`$ over $K$ latents × $C$ classes, on the unimixed probabilities |
 | $\mathrm{sg}(\cdot)$ | `.detach()` in `dyn_rep_losses` | The only difference between dyn and rep is which side is detached (and the weight) |
 | $\max(1, \cdot)$ | `torch.clamp(..., min=free_nats)`, `free_nats = 1.0` | Applied per step, on the $(B, T)$ KL, **before** the mean |
 
@@ -188,9 +188,9 @@ $$
 
 ## Eq. 4: actor and critic
 
-$$
+```math
 \text{Actor:}\quad a_t \sim \pi_\theta(a_t \mid s_t) \qquad\qquad \text{Critic:}\quad v_\psi(R_t \mid s_t)
-$$
+```
 
 $\theta$ = actor weights, $\psi$ = critic weights (both separate from the world model's $\phi$). Paper: the critic learns "to approximate the distribution of returns for each state," so $v_\psi(R_t \mid s_t)$ is a distribution, and the single value is its expectation, $v_t \doteq \mathbb{E}[v_\psi(\cdot \mid s_t)]$.
 
@@ -198,18 +198,18 @@ $\theta$ = actor weights, $\psi$ = critic weights (both separate from the world 
 |---|---|---|
 | $\pi_\theta$ | `agent.Actor` → `bounded_normal` | Covered with Eq. 6 |
 | $v_\psi(R_t \mid s_t)$ | `agent.Critic` (a `RewardHead`); `critic(feat)` → 255 bin logits | Same bins and twohot as the reward head |
-| $v_t = \mathbb{E}[v_\psi(\cdot \mid s_t)]$ | `critic.predict(feat)` = `bins_expectation(softmax(logits), bins)` | $\sum_i \mathrm{softmax}(\text{logits})_i\, b_i$ (Eq. 10) |
+| $v_t = \mathbb{E}[v_\psi(\cdot \mid s_t)]$ | `critic.predict(feat)` = `bins_expectation(softmax(logits), bins)` | $`\sum_i \mathrm{softmax}(\text{logits})_i\, b_i`$ (Eq. 10) |
 | $s_t$ | `get_feat` = $[h_t, z_t]$, 544 wide | Both networks read only the state. The critic is a $V(s)$, not TD3's $Q(s, a)$ |
 
 ## Eq. 5: critic loss and λ-return
 
-$$
+```math
 \mathcal{L}(\psi) \doteq -\sum_{t=1}^{T} \ln p_\psi\big(R^\lambda_t \mid s_t\big),
 \qquad
 R^\lambda_t \doteq r_t + \gamma\, c_t\Big((1-\lambda)\,v_{t+1} + \lambda\, R^\lambda_{t+1}\Big),
 \qquad
 R^\lambda_H \doteq v_H
-$$
+```
 
 $\gamma = 0.997$, $\lambda = 0.95$. The paper writes $v_t$ inside the bracket and $R^\lambda_T \doteq v_T$, because it stores each reward with the state it arrives in; in this repo's TD3 convention it's $v_{t+1}$, and the dream length is $H$.
 
@@ -228,14 +228,14 @@ $\gamma = 0.997$, $\lambda = 0.95$. The paper writes $v_t$ inside the bracket an
 |---|---|---|
 | continue weights $w_t$ | `continue_weights(cont)`: $w_0 = 1$, $w_t = \prod_{k<t} c_k$ | Each step's loss × $w_t$. The official code also multiplies by $\gamma^t$ and includes the continue prediction on the start state (`agent.py`: `cumprod(disc * con) / disc`). For walker-walk (no terminals, $c \approx 1$) the difference is small |
 | slow-critic regularizer | `+ slow_reg * reward_loss(logits, slow_value, bins)`, `slow_reg = 1` | Paper p. 6: "regularizing the critic towards predicting the outputs of an exponentially moving average of its own parameters" |
-| slow critic update | `update_slow_critic`: $\psi_{\text{slow}} \leftarrow 0.98\,\psi_{\text{slow}} + 0.02\,\psi$ | Once per train step, no gradient, never optimized |
+| slow critic update | `update_slow_critic`: $`\psi_{\text{slow}} \leftarrow 0.98\,\psi_{\text{slow}} + 0.02\,\psi`$ | Once per train step, no gradient, never optimized |
 
 The replay critic loss (Methods, weight 0.3) is a separate section below.
 
 ### In my own words
 
 - **One value, two calls.** `critic(feat)` gives the 255 logits, used in the critic loss. `critic.predict(feat)` gives the single $v_t$, used in the λ-return and the advantage.
-- **λ = 0** gives $R_t = r_t + \gamma c_t v_{t+1}$, the one-step TD target (TD3's $y = r + \gamma(1-d)\,Q_{\text{target}}$, with $c$ in place of $1 - d$ and $V$ in place of $Q$).
+- **λ = 0** gives $R_t = r_t + \gamma c_t v_{t+1}$, the one-step TD target (TD3's $`y = r + \gamma(1-d)\,Q_{\text{target}}`$, with $c$ in place of $1 - d$ and $V$ in place of $Q$).
 - **λ = 1** gives $R_t = r_t + \gamma c_t R_{t+1}$: every dreamed reward, with the critic used only once, at the end ($v_H$).
 - **Worked example** ($H = 2$, $\gamma = 1$, $c = 1$; $r_0 = 1$, $r_1 = 2$; $v_1 = 10$, $v_2 = 20$):
 
@@ -258,10 +258,10 @@ The replay critic loss (Methods, weight 0.3) is a separate section below.
 
 Paper: "we apply the critic loss both to imagined trajectories with loss scale $\beta_{\text{val}} = 1$ and to trajectories sampled from the replay buffer with loss scale $\beta_{\text{repval}} = 0.3$. The critic replay loss uses the imagination returns $R^\lambda_t$ at the start states of the imagination rollouts as on-policy value annotations for the replay trajectory to then compute λ-returns over the replay rewards."
 
-$$
+```math
 R^{\text{rep}}_t = r_t + \gamma\, c_t\Big((1-\lambda)\,R^{\text{img}}_{t+1} + \lambda\, R^{\text{rep}}_{t+1}\Big),
 \qquad R^{\text{rep}}_{T-1} = R^{\text{img}}_{T-1}
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -298,10 +298,10 @@ $$
 
 ## Eq. 6: actor loss
 
-$$
+```math
 \mathcal{L}(\theta) \doteq -\sum_{t=1}^{T} \mathrm{sg}\!\left(\frac{R^\lambda_t - v_\psi(s_t)}{\max(1, S)}\right) \log \pi_\theta(a_t \mid s_t) \;+\; \eta\, \mathrm{H}\big[\pi_\theta(a_t \mid s_t)\big],
 \qquad \eta = 3 \times 10^{-4}
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -319,9 +319,9 @@ $$
 
 **Policy distribution (official code; the paper doesn't give it):** `bounded_normal`
 
-$$
+```math
 \mu = \tanh(\mu_{\text{raw}}), \qquad \sigma = (1 - 0.1)\,\mathrm{sigmoid}(\sigma_{\text{raw}} + 2) + 0.1
-$$
+```
 
 - $\mu \in (-1, 1)$, matching DMC's action range. Samples are **not** squashed, so there's no tanh Jacobian in `log_prob`.
 - $\sigma \in [0.1, 1]$. At initialization (output weights × 0.01, so $\sigma_{\text{raw}} \approx 0$), $\sigma = 0.9 \cdot \mathrm{sigmoid}(2) + 0.1 \approx 0.89$.
@@ -329,9 +329,9 @@ $$
 
 ## Eq. 7: return scale
 
-$$
+```math
 S \doteq \mathrm{EMA}\big(\mathrm{Per}(R^\lambda_t, 95) - \mathrm{Per}(R^\lambda_t, 5),\ 0.99\big)
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -355,13 +355,13 @@ Paper: "Previous work typically normalizes advantages rather than returns, which
 
 ## Eq. 8–9: symlog squared loss
 
-$$
+```math
 \mathcal{L}(\theta) \doteq \tfrac{1}{2}\big(f(x, \theta) - \mathrm{symlog}(y)\big)^2,
 \qquad
 \mathrm{symlog}(x) \doteq \mathrm{sign}(x)\ln(\lvert x \rvert + 1),
 \qquad
 \mathrm{symexp}(x) \doteq \mathrm{sign}(x)\big(\exp(\lvert x \rvert) - 1\big)
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -376,15 +376,15 @@ $$
 
 ## Eq. 10–12: bins, expectation, twohot
 
-$$
+```math
 B \doteq \mathrm{symexp}\big([-20, \ldots, +20]\big),
 \qquad
 \hat y \doteq \mathrm{softmax}(f(x))^{\mathsf T} B,
 \qquad
 \mathcal{L}(\theta) \doteq -\mathrm{twohot}(y)^{\mathsf T} \log \mathrm{softmax}(f(x, \theta))
-$$
+```
 
-$$
+```math
 \mathrm{twohot}(y)_i \doteq
 \begin{cases}
 \lvert b_{k+1} - y \rvert \,/\, \lvert b_{k+1} - b_k \rvert & \text{if } i = k \\
@@ -392,7 +392,7 @@ $$
 0 & \text{else}
 \end{cases}
 \qquad k \doteq \textstyle\sum_{j} \delta(b_j < y)
-$$
+```
 
 | Term | Code | Notes |
 |---|---|---|
@@ -425,13 +425,17 @@ The paper's world-model paragraph says the reward head uses symlog MSE; the offi
 
 **Method A, symlog MSE.** One output $o$:
 
-$$\text{loss} = \big(o - \mathrm{symlog}(r)\big)^2, \qquad \text{prediction} = \mathrm{symexp}(o)$$
+```math
+\text{loss} = \big(o - \mathrm{symlog}(r)\big)^2, \qquad \text{prediction} = \mathrm{symexp}(o)
+```
 
 Example: $r = 100$, target $\mathrm{symlog}(100) = 4.62$. Output $o = 4.0$ gives loss $0.38$ and prediction $\mathrm{symexp}(4.0) = 53.6$.
 
 **Method B, twohot.** 255 logits $\to$ softmax $\to$ probabilities $p_i$ over fixed bins $b_i$:
 
-$$\text{prediction} = \sum_{i=1}^{255} p_i\, b_i, \qquad \text{loss} = -\sum_{i=1}^{255} y_i \ln p_i, \quad y = \mathrm{twohot}(r)$$
+```math
+\text{prediction} = \sum_{i=1}^{255} p_i\, b_i, \qquad \text{loss} = -\sum_{i=1}^{255} y_i \ln p_i, \quad y = \mathrm{twohot}(r)
+```
 
 Example: $r = 100$ gives the label 0.71 on bin 95.25 and 0.29 on bin 111.66, so the loss is $-(0.71 \ln p_{95.25} + 0.29 \ln p_{111.66})$, minimized when the prediction is $0.71(95.25) + 0.29(111.66) = 100$.
 
@@ -448,18 +452,24 @@ Squashing shrinks big values more than small ones, so averaging in symlog space 
 
 **Reason 2: the gradient on the logits is $p - y$, always in $[-1, 1]$.** Derivation with 3 bins, logits $\ell_1, \ell_2, \ell_3$, label $y = [y_1, y_2, y_3]$:
 
-1. Softmax with shared denominator $S = e^{\ell_1} + e^{\ell_2} + e^{\ell_3}$: $\;p_1 = e^{\ell_1}/S,\ p_2 = e^{\ell_2}/S,\ p_3 = e^{\ell_3}/S$.
+1. Softmax with shared denominator $S = e^{\ell_1} + e^{\ell_2} + e^{\ell_3}$: $`\;p_1 = e^{\ell_1}/S,\ p_2 = e^{\ell_2}/S,\ p_3 = e^{\ell_3}/S`$.
 2. Log of one: $\ln p_2 = \ln e^{\ell_2} - \ln S = \ell_2 - \ln S$ (using $\ln(a/b) = \ln a - \ln b$ and $\ln e^x = x$). This is `log_softmax`. Check with $\ell = [0, 1, 2]$: $S = 11.107$, and $\ln p_3 = \ln(7.389/11.107) = -0.408 = 2 - \ln 11.107$.
 3. Substitute into the loss:
-$$\text{loss} = -\big(y_1(\ell_1 - \ln S) + y_2(\ell_2 - \ln S) + y_3(\ell_3 - \ln S)\big)$$
+```math
+\text{loss} = -\big(y_1(\ell_1 - \ln S) + y_2(\ell_2 - \ln S) + y_3(\ell_3 - \ln S)\big)
+```
 4. Multiply out; the label sums to 1:
-$$\text{loss} = -y_1 \ell_1 - y_2 \ell_2 - y_3 \ell_3 + (y_1 + y_2 + y_3)\ln S = -y_1 \ell_1 - y_2 \ell_2 - y_3 \ell_3 + \ln S$$
+```math
+\text{loss} = -y_1 \ell_1 - y_2 \ell_2 - y_3 \ell_3 + (y_1 + y_2 + y_3)\ln S = -y_1 \ell_1 - y_2 \ell_2 - y_3 \ell_3 + \ln S
+```
 5. Differentiate with respect to $\ell_2$. Only $-y_2 \ell_2$ in the first three terms contains $\ell_2$, giving $-y_2$. For $\ln S$, the chain rule gives $\frac{1}{S} e^{\ell_2} = p_2$. So:
-$$\frac{\partial\, \text{loss}}{\partial \ell_2} = p_2 - y_2 \qquad\text{(and likewise } p_1 - y_1,\ p_3 - y_3\text{)}$$
+```math
+\frac{\partial\, \text{loss}}{\partial \ell_2} = p_2 - y_2 \qquad\text{(and likewise } p_1 - y_1,\ p_3 - y_3\text{)}
+```
 
 Numbers at init ($p = [\tfrac13, \tfrac13, \tfrac13]$, $y = [0, 0.71, 0.29]$): gradient $= [+0.33, -0.38, +0.04]$. Descent raises $\ell_2$, lowers $\ell_1$, barely moves $\ell_3$. Each entry is a difference of two probabilities, so it stays in $[-1, 1]$ whether the reward was 100 or 100,000.
 
-In general notation, $\text{loss} = -\sum_i y_i \ln p_i$ with $p_i = e^{\ell_i} / \sum_j e^{\ell_j}$, and $\partial\,\text{loss} / \partial \ell_k = p_k - y_k$. Here $i$ and $j$ both mean "each bin" (two letters only so the two sums don't get mixed up), and $k$ is the one logit being differentiated.
+In general notation, $\text{loss} = -\sum_i y_i \ln p_i$ with $p_i = e^{\ell_i} / \sum_j e^{\ell_j}$, and $`\partial\,\text{loss} / \partial \ell_k = p_k - y_k`$. Here $i$ and $j$ both mean "each bin" (two letters only so the two sums don't get mixed up), and $k$ is the one logit being differentiated.
 
 ---
 
@@ -482,13 +492,13 @@ In general notation, $\text{loss} = -\sum_i y_i \ln p_i$ with $p_i = e^{\ell_i} 
 
 Per weight tensor, in order:
 
-$$
+```math
 \begin{aligned}
 \text{AGC:}\quad & g \leftarrow g \,\big/\, \max\!\Big(1,\ \tfrac{\lVert g \rVert}{0.3 \cdot \max(10^{-3},\ \lVert p \rVert)}\Big) \\
 \text{RMS:}\quad & v \leftarrow \beta_2 v + (1-\beta_2)\, g^2, \qquad u = g \,\big/\, \big(\sqrt{v / (1 - \beta_2^t)} + \epsilon\big) \\
 \text{Momentum:}\quad & m \leftarrow \beta_1 m + (1-\beta_1)\, u, \qquad p \leftarrow p - \eta_t\, m / (1 - \beta_1^t)
 \end{aligned}
-$$
+```
 
 | Setting | Value | Notes |
 |---|---|---|
@@ -510,12 +520,12 @@ $$
 
 Adam, per weight (starting from $m = 0$, $v = 0$):
 
-$$
+```math
 m \leftarrow \beta_1 m + (1-\beta_1)\, g, \qquad
 v \leftarrow \beta_2 v + (1-\beta_2)\, g^2, \qquad
 \text{step} = \frac{\hat m}{\sqrt{\hat v} + \epsilon}, \qquad
 p \leftarrow p - \text{lr}_t \cdot \text{step}
-$$
+```
 
 - **$\beta_1$, $\beta_2$** are fixed hyperparameters (0.9, 0.999), not learned. $m$ and $v$ are optimizer state, one value per weight, initialized to zeros.
 - **$m$** averages $g$, so signs cancel: it tracks the consistent **direction**. **$v$** averages $g^2$, so signs never cancel: it tracks the typical **size**. Example: gradients $+2, -2, +2, -2$ give $m \approx 0$ but $v = 4$.
@@ -529,9 +539,9 @@ LaProp reorders the same pieces:
 
 | | Adam | LaProp |
 |---|---|---|
-| 1 | $m \leftarrow \beta_1 m + (1-\beta_1)\, g$ | $v \leftarrow \beta_2 v + (1-\beta_2)\, g^2$ |
-| 2 | $v \leftarrow \beta_2 v + (1-\beta_2)\, g^2$ | $u = g / (\sqrt{\hat v} + \epsilon)$ |
-| 3 | $\text{step} = \hat m / (\sqrt{\hat v} + \epsilon)$ | $m \leftarrow \beta_1 m + (1-\beta_1)\, u$ |
+| 1 | $`m \leftarrow \beta_1 m + (1-\beta_1)\, g`$ | $`v \leftarrow \beta_2 v + (1-\beta_2)\, g^2`$ |
+| 2 | $`v \leftarrow \beta_2 v + (1-\beta_2)\, g^2`$ | $u = g / (\sqrt{\hat v} + \epsilon)$ |
+| 3 | $\text{step} = \hat m / (\sqrt{\hat v} + \epsilon)$ | $`m \leftarrow \beta_1 m + (1-\beta_1)\, u`$ |
 | 4 | $p \leftarrow p - \text{lr}_t \cdot \text{step}$ | $p \leftarrow p - \text{lr}_t \cdot \hat m$ |
 
 - **$u$** is the gradient divided by its own typical size, so it's about $\pm 1$: $g = 2$ with $\sqrt{v} = 2$, and $g = 0.002$ with $\sqrt{v} = 0.002$, both give $u = 1$.
@@ -542,9 +552,9 @@ LaProp reorders the same pieces:
 
 Paper: the replay ratio is "the fraction of time steps trained on per time step collected from the environment, without action repeat."
 
-$$
+```math
 \text{replay ratio} = \frac{B \cdot T}{\texttt{train\_every}} = \frac{16 \times 64}{2} = 512
-$$
+```
 
 | Setting (walker-walk) | Value |
 |---|---|
@@ -586,7 +596,9 @@ repeat:
     do 8 train steps             → each uses 1024 transitions → 8 × 1024 = 8192 transitions used
 ```
 
-$$\text{replay ratio} = \frac{\text{transitions used for training}}{\text{new transitions}} = \frac{8192}{16} = 512$$
+```math
+\text{replay ratio} = \frac{\text{transitions used for training}}{\text{new transitions}} = \frac{8192}{16} = 512
+```
 
 For every new transition collected, 512 transitions get fed through training, so over the run each transition is used about 512 times on average. It changes if either the number of train steps per loop or the batch size changes. Derivation of the config formula:
 
@@ -597,8 +609,8 @@ For every new transition collected, 512 transitions get fed through training, so
 **In my own words**
 
 - **What the replay ratio means.** How many transitions go through the networks per transition collected. Each pass collects 16 transitions and runs 8 gradient steps on batches of $16 \times 64 = 1024$ transitions, so $8 \times 1024 / 16 = 512$. TD3 with batch 256 and one gradient step per env step would be $256 / 1 = 256$.
-- **What actually drives the code** is gradient steps per transition collected, $1 / \texttt{train\_every} = 1/2$. The replay ratio is that times the batch size, $\tfrac{1}{2} \times 1024 = 512$. It adds no mechanism; the paper uses it to compare settings with different batch shapes (Fig. 6: higher replay ratios learn faster per env step).
+- **What actually drives the code** is gradient steps per transition collected, $`1 / \texttt{train\_every} = 1/2`$. The replay ratio is that times the batch size, $\tfrac{1}{2} \times 1024 = 512$. It adds no mechanism; the paper uses it to compare settings with different batch shapes (Fig. 6: higher replay ratios learn faster per env step).
 - **`train_every` counts transitions, not loop passes.** "For every 2 transitions collected, do 1 gradient step." With 1 env that's one gradient step every 2 passes; with 16 envs, 8 gradient steps every pass.
-- **Replay ratio = average times each transition is sampled.** Exactly: total transitions sampled ÷ total collected. Buffer size cancels out of the average: with a FIFO buffer of size $M$, each gradient step samples a given transition with probability $\approx B T / M$, and it survives $M / \texttt{train\_every}$ gradient steps, so $B T / \texttt{train\_every}$ samples in expectation. Buffer size changes the spread instead. Here capacity (5M) exceeds the run (500k), so nothing is evicted and early transitions are sampled far more than late ones, but the average is still 512.
+- **Replay ratio = average times each transition is sampled.** Exactly: total transitions sampled ÷ total collected. Buffer size cancels out of the average: with a FIFO buffer of size $M$, each gradient step samples a given transition with probability $\approx B T / M$, and it survives $`M / \texttt{train\_every}`$ gradient steps, so $`B T / \texttt{train\_every}`$ samples in expectation. Buffer size changes the spread instead. Here capacity (5M) exceeds the run (500k), so nothing is evicted and early transitions are sampled far more than late ones, but the average is still 512.
 - **Halving the batch** keeps the same number of gradient steps but halves the samples per step, so the replay ratio halves. That means each transition is reused half as often, which mostly means noisier gradients, not necessarily half the learning.
 - **Warm-up.** No training until the buffer holds 5,120 transitions (320 per env), so every env stream has enough for 64-long sequences.

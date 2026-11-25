@@ -55,19 +55,19 @@ If you can explain each row, and what breaks without it, you understand the worl
 
 ### The RNN problem
 
-```latex
+```math
 h_t = \tanh(W h_{t-1} + U x_t + b)
 ```
 
 Backpropagation multiplies one Jacobian per step, with a\_t = W h\_{t−1} + U x\_t + b:
 
-```latex
-\frac{\partial h_t}{\partial h_{t-1}} = \operatorname{diag}\big(\tanh'(a_t)\big)\, W
+```math
+\frac{\partial h_t}{\partial h_{t-1}} = \mathrm{diag}\big(\tanh'(a_t)\big)\, W
 ```
 
 Over k steps, the product of k such matrices is bounded by:
 
-```latex
+```math
 \left\| \frac{\partial h_t}{\partial h_{t-k}} \right\| \le \|W\|^k
 ```
 
@@ -75,7 +75,7 @@ If ‖W‖ < 1, the gradient shrinks exponentially (vanishes). If ‖W‖ > 1, i
 
 **Where the diag comes from (n = 2).** tanh acts element-wise, so output i depends only on input i. Every off-diagonal entry of its Jacobian is zero:
 
-```latex
+```math
 \frac{\partial \tanh(a)}{\partial a} = \begin{bmatrix} \tanh'(a_1) & 0 \\ 0 & \tanh'(a_2) \end{bmatrix}
 ```
 
@@ -85,7 +85,7 @@ Multiplying by W scales row i of W by tanh′(a\_i), which is at most 1.
 
 Two inputs per step: h\_{t−1} (size n) and x\_t (size m). Every W is (n, m), every U is (n, n), every b is (n,), so each term below is (n,).
 
-```latex
+```math
 \begin{aligned} u_t &= \sigma(W_u x_t + U_u h_{t-1} + b_u) \\ r_t &= \sigma(W_r x_t + U_r h_{t-1} + b_r) \\ \tilde{h}_t &= \tanh\big(W x_t + U (r_t \odot h_{t-1}) + b\big) \\ h_t &= (1 - u_t) \odot h_{t-1} + u_t \odot \tilde{h}_t \end{aligned}
 ```
 
@@ -111,7 +111,7 @@ Two inputs per step: h\_{t−1} (size n) and x\_t (size m). Every W is (n, m), e
 
 Posterior and prior both produce a z\_t from the same h\_t. The KL losses pull them together so that, when there is no observation, the prior's guess can stand in for the posterior; h\_t and z\_t then feed the next GRU step.
 
-```latex
+```math
 \begin{aligned} \text{Sequence model:} \quad & h_t = f_\phi(h_{t-1}, z_{t-1}, a_{t-1}) \\ \text{Encoder (posterior):} \quad & z_t \sim q_\phi(z_t \mid h_t, x_t) \\ \text{Dynamics predictor (prior):} \quad & \hat{z}_t \sim p_\phi(\hat{z}_t \mid h_t) \\ \text{Reward predictor:} \quad & \hat{r}_t \sim p_\phi(\hat{r}_t \mid h_t, z_t) \\ \text{Continue predictor:} \quad & \hat{c}_t \sim p_\phi(\hat{c}_t \mid h_t, z_t) \\ \text{Decoder:} \quad & \hat{x}_t \sim p_\phi(\hat{x}_t \mid h_t, z_t) \end{aligned}
 ```
 
@@ -157,19 +157,19 @@ Strictly, "RSSM" is only the first three lines. The reward, continue and decoder
 
 ### From logits to z\_t
 
-```latex
+```math
 \ell = \text{MLP}([h_t, e_t]) \in \mathbb{R}^{K \cdot C} \;\longrightarrow\; \text{reshape to } \mathbb{R}^{K \times C}
 ```
 
-```latex
-p^{(k)} = \operatorname{softmax}\big(\ell^{(k)}\big), \qquad \tilde{p}^{(k)} = 0.99\, p^{(k)} + 0.01 \cdot \tfrac{1}{C}
+```math
+p^{(k)} = \mathrm{softmax}\big(\ell^{(k)}\big), \qquad \tilde{p}^{(k)} = 0.99\, p^{(k)} + 0.01 \cdot \tfrac{1}{C}
 ```
 
 Then sample one face per row from p̃, write it as a one-hot row, and flatten to length K · C before feeding the GRU or heads. The 1% uniform mix is a fixed safety step with nothing learned: no face ever has probability exactly 0, so log-probabilities and KLs stay finite.
 
 **Example (K = 3, C = 4).** The roll (2, 4, 1) becomes:
 
-```latex
+```math
 z_t = \begin{bmatrix} 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 1 \\ 1 & 0 & 0 & 0 \end{bmatrix} \;\longrightarrow\; [0,1,0,0,\;0,0,0,1,\;1,0,0,0]
 ```
 
@@ -179,8 +179,8 @@ z_t = \begin{bmatrix} 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 1 \\ 1 & 0 & 0 & 0 \end{bmatr
 
 **The trick.** The forward pass uses the one-hot; the backward pass pretends the output was p̃.
 
-```latex
-z^{(k)} = \text{onehot}^{(k)} + \tilde{p}^{(k)} - \operatorname{sg}\big(\tilde{p}^{(k)}\big)
+```math
+z^{(k)} = \text{onehot}^{(k)} + \tilde{p}^{(k)} - \mathrm{sg}\big(\tilde{p}^{(k)}\big)
 ```
 
 - **Forward (values):** \[0, 1, 0, 0\] + \[0.1, 0.7, 0.1, 0.1\] − \[0.1, 0.7, 0.1, 0.1\] = \[0, 1, 0, 0\].
@@ -193,7 +193,7 @@ I is the identity matrix: 1 for each entry with respect to itself, 0 elsewhere. 
 - ∂L/∂z is nonzero. z is an ordinary input to the decoder and heads, so "if entry 3 were slightly bigger, would reconstruction improve?" has a real answer.
 - ∂z/∂p̃ was the flat link. The trick replaces only that link with I, so the useful signal passes through:
 
-```latex
+```math
 \frac{\partial L}{\partial \tilde{p}} = \frac{\partial L}{\partial z} \cdot I = \frac{\partial L}{\partial z}
 ```
 
@@ -232,7 +232,7 @@ The posterior net is not recurrent itself; it is a plain MLP that must run in st
 
 **Idea.** Each head outputs a distribution, and the loss scores how much probability it gave the real value. Written uniformly as a negative log-likelihood, it becomes a familiar loss per head: MSE, binary cross-entropy, twohot cross-entropy.
 
-```latex
+```math
 \mathcal{L}_{\text{pred}} = -\ln p_\phi(x_t \mid z_t, h_t) - \ln p_\phi(r_t \mid z_t, h_t) - \ln p_\phi(c_t \mid z_t, h_t)
 ```
 
@@ -242,19 +242,19 @@ It is a sum of three NLLs. The ground truth is the first argument: x\_t, r\_t, c
 
 The network never sees x\_t. It outputs the parameters of a distribution, and a fixed formula, outside the network, plugs in the real value.
 
-```latex
+```math
 (h_t, z_t) \xrightarrow{\text{NN}} \mu \;\longrightarrow\; p(x_t \mid \mu) \;\longrightarrow\; -\ln p(x_t \mid \mu)
 ```
 
 For a unit-variance Gaussian, the NLL is squared error plus a constant, so in code you just write MSE:
 
-```latex
+```math
 -\ln \mathcal{N}(x_t \mid \mu, I) = \tfrac{1}{2}\lVert x_t - \mu \rVert^2 + \text{const}
 ```
 
 **Why σ is fixed.** The paper does not say. A known general reason: with a learned σ², the model can lower its loss by inflating σ² on hard parts instead of fitting them.
 
-```latex
+```math
 -\ln \mathcal{N}(x \mid \mu, \sigma^2) = \frac{(x - \mu)^2}{2\sigma^2} + \tfrac{1}{2}\ln \sigma^2 + \text{const}
 ```
 
@@ -262,8 +262,8 @@ For a unit-variance Gaussian, the NLL is squared error plus a constant, so in co
 
 The target is the raw x\_t = (i\_t, q\_t), never an embedding. There is one output head per modality, and their losses are summed:
 
-```latex
--\ln p_\phi(x_t \mid z_t, h_t) = \text{loss}_{\text{img}}(i_t, \hat{i}_t) + \lVert \operatorname{symlog}(q_t) - \hat{q}_t \rVert^2
+```math
+-\ln p_\phi(x_t \mid z_t, h_t) = \text{loss}_{\text{img}}(i_t, \hat{i}_t) + \lVert \mathrm{symlog}(q_t) - \hat{q}_t \rVert^2
 ```
 
 - **Image head:** sigmoid output in \[0, 1\], trained with MSE against pixels/255, summed over pixels (no symlog). Default code upsamples 2× then convolves at each layer, rather than a transposed conv. The image and vector terms share one loss scale of 1.0.
@@ -271,8 +271,8 @@ The target is the raw x\_t = (i\_t, q\_t), never an embedding. There is one outp
 
 **symlog.** A fixed squashing function, applied element-wise:
 
-```latex
-\operatorname{symlog}(x) = \operatorname{sign}(x)\,\ln(|x| + 1), \qquad \operatorname{symexp}(x) = \operatorname{sign}(x)\,\big(e^{|x|} - 1\big)
+```math
+\mathrm{symlog}(x) = \mathrm{sign}(x)\,\ln(|x| + 1), \qquad \mathrm{symexp}(x) = \mathrm{sign}(x)\,\big(e^{|x|} - 1\big)
 ```
 
 symlog(1000) ≈ 6.9 and symlog(−1000) ≈ −6.9, while values near 0 pass almost unchanged. An inventory count of 500 and a health value of 0.3 can then share one MSE without per-environment normalization.
@@ -281,7 +281,7 @@ symlog(1000) ≈ 6.9 and symlog(−1000) ≈ −6.9, while values near 0 pass al
 
 One logit ℓ\_t becomes p̂\_t = σ(ℓ\_t), the probability the episode continues. The label c\_t is 1 for continue, 0 for ended.
 
-```latex
+```math
 -\ln p_\phi(c_t \mid z_t, h_t) = -\big[\,c_t \ln \hat{p}_t + (1 - c_t)\ln(1 - \hat{p}_t)\,\big]
 ```
 
@@ -299,19 +299,19 @@ The paper's world-model paragraph says symlog squared loss, but the code settles
 
 General discrete form, summing over every outcome x:
 
-```latex
+```math
 \text{KL}[\,q \,\|\, p\,] = \sum_{x} q(x) \ln \frac{q(x)}{p(x)}
 ```
 
 Continuous form:
 
-```latex
+```math
 \text{KL}[\,q \,\|\, p\,] = \int q(x) \ln \frac{q(x)}{p(x)}\, dx
 ```
 
 Dreamer's form, for K independent dice with C faces:
 
-```latex
+```math
 \text{KL}[\,q \,\|\, p\,] = \sum_{k=1}^{K} \sum_{c=1}^{C} q^{(k)}_c \ln \frac{q^{(k)}_c}{p^{(k)}_c}
 ```
 
@@ -326,7 +326,7 @@ Without independence you would sum over all C^K joint outcomes. Because the dice
 | Die 2, posterior q | 0.1 | 0.1 | 0.8 |
 | Die 2, prior p | 0.1 | 0.1 | 0.8 |
 
-```latex
+```math
 \text{KL}^{(1)} = 0.7\ln\tfrac{0.7}{0.5} + 0.2\ln\tfrac{0.2}{0.3} + 0.1\ln\tfrac{0.1}{0.2} = 0.236 - 0.081 - 0.069 = 0.085
 ```
 
@@ -365,15 +365,15 @@ Eq. 2 sums over t while implementations usually average; the two differ by the c
 
 **Idea.** Both are the same KL between posterior and prior, split into two directions by stop-gradients. The dynamics loss (weight 1) moves the prior toward the posterior; the representation loss (weight 0.1) moves the posterior gently toward the prior.
 
-```latex
-\mathcal{L}_{\text{dyn}} = \max\!\big(1,\; \text{KL}\big[\,\operatorname{sg}(q_\phi(z_t \mid h_t, x_t)) \,\|\, p_\phi(z_t \mid h_t)\,\big]\big)
+```math
+\mathcal{L}_{\text{dyn}} = \max\!\big(1,\; \text{KL}\big[\,\mathrm{sg}(q_\phi(z_t \mid h_t, x_t)) \,\|\, p_\phi(z_t \mid h_t)\,\big]\big)
 ```
 
-```latex
-\mathcal{L}_{\text{rep}} = \max\!\big(1,\; \text{KL}\big[\,q_\phi(z_t \mid h_t, x_t) \,\|\, \operatorname{sg}(p_\phi(z_t \mid h_t))\,\big]\big)
+```math
+\mathcal{L}_{\text{rep}} = \max\!\big(1,\; \text{KL}\big[\,q_\phi(z_t \mid h_t, x_t) \,\|\, \mathrm{sg}(p_\phi(z_t \mid h_t))\,\big]\big)
 ```
 
-```latex
+```math
 \mathcal{L}(\phi) = \mathbb{E}_{q_\phi}\Big[\textstyle\sum_{t=1}^{T} \big(\mathcal{L}_{\text{pred}} + \mathcal{L}_{\text{dyn}} + 0.1\,\mathcal{L}_{\text{rep}}\big)\Big]
 ```
 
@@ -388,8 +388,8 @@ A plain KL between two learned distributions can be lowered from either side. Wi
 
 **The posterior acts as soft labels.** With q stopped, its entropy is a constant, so from the prior's side the loss is exactly classification cross-entropy:
 
-```latex
-\text{KL}[\,\operatorname{sg}(q) \,\|\, p\,] = \underbrace{\textstyle\sum_c q_c \ln \tfrac{1}{p_c}}_{\text{cross-entropy}} - \underbrace{\textstyle\sum_c q_c \ln \tfrac{1}{q_c}}_{\text{entropy of } q,\ \text{constant}}
+```math
+\text{KL}[\,\mathrm{sg}(q) \,\|\, p\,] = \underbrace{\textstyle\sum_c q_c \ln \tfrac{1}{p_c}}_{\text{cross-entropy}} - \underbrace{\textstyle\sum_c q_c \ln \tfrac{1}{q_c}}_{\text{entropy of } q,\ \text{constant}}
 ```
 
 The labels move, though: the posterior is itself trained by the prediction and representation losses, so the prior chases a target that shifts every optimizer step.
@@ -422,7 +422,7 @@ All three terms sum into one scalar loss. One forward pass, one backward pass an
 
 **Notation.** ℓ^p are the prior's logits, ℓ^q the posterior's. Worked numbers use one invented die with 3 faces: posterior q = \[0.05, 0.9, 0.05\], prior p = \[0.3, 0.4, 0.3\].
 
-```latex
+```math
 \text{KL} = 0.05\ln\tfrac{0.05}{0.3} + 0.9\ln\tfrac{0.9}{0.4} + 0.05\ln\tfrac{0.05}{0.3} = -0.090 + 0.730 - 0.090 = 0.551 \text{ nats}
 ```
 
@@ -430,55 +430,55 @@ All three terms sum into one scalar loss. One forward pass, one backward pass an
 
 1. Start from the KL:
 
-```latex
+```math
 \text{KL}[\,q \,\|\, p\,] = \sum_c q_c \ln \frac{q_c}{p_c}
 ```
 
 2. Split the log of the ratio, using ln(a/b) = ln a − ln b:
 
-```latex
+```math
 \text{KL} = \sum_c q_c \ln q_c - \sum_c q_c \ln p_c
 ```
 
 3. q is stop-gradiented, so only the second sum produces gradients. (Its value still counts in the loss: 0.551 = −0.394 + 0.945.)
 
-```latex
+```math
 \mathcal{L}_{\text{eff}} = -\sum_c q_c \ln p_c
 ```
 
 4. Write p\_c as a softmax of the prior's logits:
 
-```latex
+```math
 p_c = \frac{e^{\ell^p_c}}{\sum_j e^{\ell^p_j}}
 ```
 
 5. Take its log, using ln(a/b) = ln a − ln b and ln e^x = x. The log of a sum does not split, so the second term stays whole:
 
-```latex
+```math
 \ln p_c = \ell^p_c - \ln \sum_j e^{\ell^p_j}
 ```
 
 6. Substitute into step 3 and distribute the sum:
 
-```latex
+```math
 \mathcal{L}_{\text{eff}} = -\sum_c q_c \ell^p_c + \Big(\sum_c q_c\Big) \ln \sum_j e^{\ell^p_j}
 ```
 
 7. q is a probability distribution, so its entries sum to 1:
 
-```latex
+```math
 \mathcal{L}_{\text{eff}} = -\sum_c q_c \ell^p_c + \ln \sum_j e^{\ell^p_j}
 ```
 
 8. Differentiate each term with respect to ℓ^p\_2. Only c = 2 in the first sum, and only j = 2 inside the log, contain ℓ^p\_2. The second uses the chain rule d/dx ln u = (1/u)(du/dx):
 
-```latex
+```math
 \frac{\partial}{\partial \ell^p_2}\Big(-\sum_c q_c \ell^p_c\Big) = -q_2 \qquad \frac{\partial}{\partial \ell^p_2}\ln \sum_j e^{\ell^p_j} = \frac{e^{\ell^p_2}}{\sum_j e^{\ell^p_j}} = p_2
 ```
 
 9. Add the two pieces:
 
-```latex
+```math
 \frac{\partial \mathcal{L}}{\partial \ell^p_2} = p_2 - q_2 = 0.4 - 0.9 = -0.5
 ```
 
@@ -491,7 +491,7 @@ Now p is the constant and the posterior logits ℓ^q move. It is harder because 
 1. **Multivariable chain rule.** If f depends on u and v, and both depend on x, add one term per path: df/dx = (∂f/∂u)(du/dx) + (∂f/∂v)(dv/dx). Check with f = u · v, u = x², v = 3x: directly f = 3x³ and df/dx = 9x²; by the rule, 3x · 2x + x² · 3 = 9x².
 2. **Apply it to the KL**, which has six inputs, q\_1, q\_2, q\_3 and p\_1, p\_2, p\_3. Nudging ℓ^q\_2 moves all three q's, because they share the softmax denominator and must still sum to 1:
 
-```latex
+```math
 \frac{\partial \text{KL}}{\partial \ell^q_2} = \sum_{c=1}^{3} \frac{\partial \text{KL}}{\partial q_c}\frac{\partial q_c}{\partial \ell^q_2} + \sum_{c=1}^{3} \frac{\partial \text{KL}}{\partial p_c}\frac{\partial p_c}{\partial \ell^q_2}
 ```
 
@@ -499,13 +499,13 @@ The p sum is zero for two separate reasons: p is computed from ℓ^p, not ℓ^q,
 
 3. **First factor.** Only one KL term contains q\_c. By the product rule, d/dq (q ln q) = ln q + 1, and q ln p\_c differentiates to the constant ln p\_c:
 
-```latex
+```math
 \frac{\partial \text{KL}}{\partial q_c} = \ln q_c + 1 - \ln p_c = \ln \frac{q_c}{p_c} + 1
 ```
 
 4. **Second factor.** Write q\_c = e^{ℓ\_c} · S^{−1} with S = Σ\_j e^{ℓ\_j}, so ∂S/∂ℓ\_2 = e^{ℓ\_2}, and use the product rule:
 
-```latex
+```math
 \frac{\partial q_2}{\partial \ell^q_2} = q_2 - q_2^2 = q_2(1 - q_2) \qquad \frac{\partial q_1}{\partial \ell^q_2} = -\frac{e^{\ell_1} e^{\ell_2}}{S^2} = -q_1 q_2
 ```
 
@@ -520,13 +520,13 @@ The p sum is zero for two separate reasons: p is computed from ℓ^p, not ℓ^q,
 
 6. **Simplify symbolically.** Write A\_c = ln(q\_c / p\_c) + 1 and factor out q\_2:
 
-```latex
+```math
 q_2\big[(1 - q_2)A_2 - q_1 A_1 - q_3 A_3\big] = q_2\Big[A_2 - \sum_c q_c A_c\Big]
 ```
 
 Expanding (1 − q\_2)A\_2 produces −q\_2 A\_2, the missing piece that completes the sum over all faces. That sum is the KL plus Σ q\_c = 1:
 
-```latex
+```math
 \sum_c q_c A_c = \text{KL} + 1 \quad\Longrightarrow\quad \frac{\partial \text{KL}}{\partial \ell^q_2} = q_2\Big(\ln \frac{q_2}{p_2} - \text{KL}\Big)
 ```
 
@@ -542,7 +542,7 @@ Logits are network outputs, not parameters, so they are never updated directly. 
 
 ### Step 1: collect data
 
-```latex
+```math
 x_t \to z_t \sim q_\phi(z_t \mid h_t, x_t) \;\to\; a_t \sim \pi_\theta(a_t \mid h_t, z_t) \;\to\; \text{env} \;\to\; (x_{t+1}, r_{t+1}, c_{t+1})
 ```
 
@@ -578,7 +578,7 @@ Steps 2 onward of the training loop (sample a batch, world-model update, imagina
 
 **Idea.** One cycle = collect N agent steps, then one gradient step that runs world model → imagine → critic → actor. Only real steps go into replay; dreamed steps are never stored.
 
-```latex
+```math
 N = \frac{B \cdot T}{\text{replay ratio}}
 ```
 
@@ -617,7 +617,7 @@ Replay ratio = time steps trained on per agent step collected. Action repeat is 
 
 ### λ-return
 
-```latex
+```math
 R^\lambda_t = r_t + \gamma c_t \big( (1-\lambda)\, v_{t+1} + \lambda R^\lambda_{t+1} \big), \qquad R^\lambda_H = v_H
 ```
 
@@ -627,7 +627,7 @@ It is a weighted average of k-step returns: weight (1−λ)λ^{k−1} on the k-s
 
 Same recursion along the real 64-step sequence, with real rewards. Where imagination would bootstrap from v\_{t+1}, replay bootstraps from R^img\_{t+1}, the imagination return of the rollout that started at that real state.
 
-```latex
+```math
 R^{\text{rep}}_t = r_t + \gamma c_t \big( (1-\lambda)\, R^{\text{img}}_{t+1} + \lambda R^{\text{rep}}_{t+1} \big)
 ```
 
@@ -653,14 +653,14 @@ Output layer is zero-initialized, so v starts at exactly 0.
 - **EMA regularizer:** a second cross-entropy toward twohot(v\_slow), weight 1. v\_slow is an EMA copy of the critic with decay 0.98.
 - **Continue weight:** probability the imagined episode is still alive at s\_t (stop-gradient).
 
-```latex
+```math
 w_0 = 1, \qquad w_{t+1} = w_t \cdot c_t
 ```
 
 Example: c = (1.0, 0.95, 0.2) → w = (1, 1.0, 0.95, 0.19).
 
-```latex
-\mathcal{L}_{\text{critic}} = 1.0 \sum_t \operatorname{sg}(w_t)\Big(\text{CE}\big(\text{twohot}(R^{\text{img}}_t), p_t\big) + \text{CE}\big(\text{twohot}(v^{\text{slow}}_t), p_t\big)\Big) + 0.3\, \mathcal{L}_{\text{rep}}
+```math
+\mathcal{L}_{\text{critic}} = 1.0 \sum_t \mathrm{sg}(w_t)\Big(\text{CE}\big(\text{twohot}(R^{\text{img}}_t), p_t\big) + \text{CE}\big(\text{twohot}(v^{\text{slow}}_t), p_t\big)\Big) + 0.3\, \mathcal{L}_{\text{rep}}
 ```
 
 **In the official code** (e3f0224): γ is folded into the continue target as (1 − terminal) · (1 − 1/333), so γ = 1 inside the imagination return; replay uses γ = 0.997 explicitly. Effective discount is the same.
@@ -669,8 +669,8 @@ Example: c = (1.0, 0.95, 0.2) → w = (1, 1.0, 0.95, 0.19).
 
 **Idea.** Reinforce on imagined rollouts, for both discrete and continuous actions: raise the log-probability of sampled actions that beat the critic's expectation, lower it for those that didn't. No gradient flows through the world model.
 
-```latex
-\mathcal{L}(\theta) = -\sum_t \operatorname{sg}(w_t)\Big( \operatorname{sg}\!\Big(\frac{R^\lambda_t - v(s_t)}{\max(1,S)}\Big) \ln \pi_\theta(a_t \mid s_t) + \eta\, \mathrm{H}\big[\pi_\theta(\cdot \mid s_t)\big] \Big)
+```math
+\mathcal{L}(\theta) = -\sum_t \mathrm{sg}(w_t)\Big( \mathrm{sg}\!\Big(\frac{R^\lambda_t - v(s_t)}{\max(1,S)}\Big) \ln \pi_\theta(a_t \mid s_t) + \eta\, \mathrm{H}\big[\pi_\theta(\cdot \mid s_t)\big] \Big)
 ```
 
 The paper's Eq. 6 omits w\_t; the official code multiplies the whole per-step term by the same continue weight as the critic. η = 3 × 10⁻⁴.
@@ -684,8 +684,8 @@ The paper's Eq. 6 omits w\_t; the official code multiplies the whole per-step te
 
 ### Return scale S (Eq. 7)
 
-```latex
-S = \operatorname{EMA}\big(\operatorname{Per}(R^\lambda, 95) - \operatorname{Per}(R^\lambda, 5),\ 0.99\big)
+```math
+S = \mathrm{EMA}\big(\mathrm{Per}(R^\lambda, 95) - \mathrm{Per}(R^\lambda, 5),\ 0.99\big)
 ```
 
 Example: 5th percentile −2, 95th percentile 18 → spread 20; with previous S = 19, S ← 0.99 · 19 + 0.01 · 20 = 19.01. A spread of 0.3 divides by max(1, 0.3) = 1. Scale large returns down, never small ones up.
@@ -694,7 +694,7 @@ Example: 5th percentile −2, 95th percentile 18 → spread 20; with previous S 
 
 ### Discrete gradient
 
-```latex
+```math
 \frac{\partial \ln \pi(a_t)}{\partial l} = \text{onehot}(a_t) - \pi
 ```
 
@@ -706,11 +706,11 @@ Official `bounded_normal`: mean = tanh(network output), σ squashed into \[0.1, 
 
 Example: μ = 0, σ = 0.5, a = 0.3, Â = 0.16.
 
-```latex
+```math
 \ln \pi(a) = -\frac{(a-\mu)^2}{2\sigma^2} - \ln\sigma - \tfrac12 \ln 2\pi \approx -0.41
 ```
 
-```latex
+```math
 \frac{\partial \ln \pi}{\partial \mu} = \frac{a-\mu}{\sigma^2} = 1.2, \qquad \frac{\partial \ln \pi}{\partial \sigma} = \frac{(a-\mu)^2}{\sigma^3} - \frac{1}{\sigma} = -1.28
 ```
 

@@ -162,9 +162,15 @@ src/
 tests/      unit tests for every module
 ```
 
+## How I used Claude
+
+I wrote the core algorithm myself: the RSSM, the world-model losses, the distributions and prediction heads, the λ-return and replay targets, the actor and critic, the replay buffer, the training loop and the LaProp optimizer. For those parts I used [Claude Code](https://claude.com/claude-code) as a tutor and reviewer. It explained the paper, answered PyTorch questions and reviewed my code, pointing at the line and the problem while I made the fix. Many of the bugs in [docs/debugging.md](docs/debugging.md#5-bugs-i-actually-hit) were caught that way.
+
+Claude Code wrote the supporting code: the environment wrappers and env factory, config overrides, logging and checkpointing, the GPU setup and sweep launch scripts, the plotting script, and test scaffolding. It also drafted docs/debugging.md and this README, which I edited. Claude Code made the commits, so each carries a `Co-Authored-By: Claude` line.
+
 ## License and acknowledgements
 
 MIT, see [LICENSE](LICENSE).
 
-- [NM512/dreamerv3-torch](https://github.com/NM512/dreamerv3-torch) (MIT): `src/envs/dmc_env.py` adapts its DeepMind Control wrapper; its license notice is kept in [`src/envs/LICENSE-NM512`](src/envs/LICENSE-NM512). The Gymnasium wrapper and the env factory are my own.
+- [NM512/dreamerv3-torch](https://github.com/NM512/dreamerv3-torch) (MIT): `src/envs/dmc_env.py` adapts its DeepMind Control wrapper; its license notice is kept in [`src/envs/LICENSE-NM512`](src/envs/LICENSE-NM512). The Gymnasium wrapper and the env factory are original to this repo.
 - [danijar/dreamerv3](https://github.com/danijar/dreamerv3) (commit e3f0224): the reference for hyperparameters and for details the paper leaves open.
